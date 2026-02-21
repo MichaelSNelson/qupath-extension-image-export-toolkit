@@ -12,6 +12,9 @@ import org.slf4j.LoggerFactory;
 
 import qupath.lib.classifiers.pixel.PixelClassificationImageServer;
 import qupath.lib.classifiers.pixel.PixelClassifier;
+import qupath.lib.display.ImageDisplay;
+import qupath.lib.display.settings.DisplaySettingUtils;
+import qupath.lib.gui.images.servers.ChannelDisplayTransformServer;
 import qupath.lib.gui.viewer.OverlayOptions;
 import qupath.lib.gui.viewer.overlays.HierarchyOverlay;
 import qupath.lib.images.ImageData;
@@ -61,20 +64,24 @@ public class RenderedImageExporter {
 
         ImageServer<BufferedImage> baseServer = imageData.getServer();
         PixelClassificationImageServer classificationServer = null;
+        ImageServer<BufferedImage> displayServer = null;
 
         try {
             classificationServer = new PixelClassificationImageServer(imageData, classifier);
+            displayServer = resolveDisplayServer(imageData, baseServer, config);
 
             double downsample = config.getDownsample();
             int outputWidth = (int) Math.ceil(baseServer.getWidth() / downsample);
             int outputHeight = (int) Math.ceil(baseServer.getHeight() / downsample);
 
+            ImageServer<BufferedImage> readServer =
+                    displayServer != null ? displayServer : baseServer;
             RegionRequest request = RegionRequest.createInstance(
-                    baseServer.getPath(), downsample,
-                    0, 0, baseServer.getWidth(), baseServer.getHeight());
+                    readServer.getPath(), downsample,
+                    0, 0, readServer.getWidth(), readServer.getHeight());
 
             logger.debug("Reading base image at downsample {} for: {}", downsample, entryName);
-            BufferedImage baseImage = baseServer.readRegion(request);
+            BufferedImage baseImage = readServer.readRegion(request);
 
             logger.debug("Reading classification at downsample {} for: {}", downsample, entryName);
             RegionRequest classRequest = RegionRequest.createInstance(
@@ -126,13 +133,8 @@ public class RenderedImageExporter {
         } catch (Exception e) {
             throw new IOException("Failed to export image: " + entryName, e);
         } finally {
-            if (classificationServer != null) {
-                try {
-                    classificationServer.close();
-                } catch (Exception e) {
-                    logger.warn("Error closing classification server for: {}", entryName, e);
-                }
-            }
+            closeQuietly(displayServer, entryName);
+            closeQuietly(classificationServer, entryName);
         }
     }
 
@@ -150,18 +152,23 @@ public class RenderedImageExporter {
                                                String entryName) throws IOException {
 
         ImageServer<BufferedImage> baseServer = imageData.getServer();
+        ImageServer<BufferedImage> displayServer = null;
 
         try {
+            displayServer = resolveDisplayServer(imageData, baseServer, config);
+
             double downsample = config.getDownsample();
             int outputWidth = (int) Math.ceil(baseServer.getWidth() / downsample);
             int outputHeight = (int) Math.ceil(baseServer.getHeight() / downsample);
 
+            ImageServer<BufferedImage> readServer =
+                    displayServer != null ? displayServer : baseServer;
             RegionRequest request = RegionRequest.createInstance(
-                    baseServer.getPath(), downsample,
-                    0, 0, baseServer.getWidth(), baseServer.getHeight());
+                    readServer.getPath(), downsample,
+                    0, 0, readServer.getWidth(), readServer.getHeight());
 
             logger.debug("Reading base image at downsample {} for: {}", downsample, entryName);
-            BufferedImage baseImage = baseServer.readRegion(request);
+            BufferedImage baseImage = readServer.readRegion(request);
 
             BufferedImage result = new BufferedImage(
                     baseImage.getWidth(), baseImage.getHeight(),
@@ -194,6 +201,50 @@ public class RenderedImageExporter {
 
         } catch (Exception e) {
             throw new IOException("Failed to export image: " + entryName, e);
+        } finally {
+            closeQuietly(displayServer, entryName);
+        }
+    }
+
+    /**
+     * Resolve display settings and wrap the base server if needed.
+     *
+     * @return a wrapped server applying display settings, or null for RAW mode
+     */
+    private static ImageServer<BufferedImage> resolveDisplayServer(
+            ImageData<BufferedImage> imageData,
+            ImageServer<BufferedImage> baseServer,
+            RenderedExportConfig config) throws IOException {
+
+        var mode = config.getDisplaySettingsMode();
+        if (mode == RenderedExportConfig.DisplaySettingsMode.RAW) {
+            return null;
+        }
+
+        var display = ImageDisplay.create(imageData);
+
+        if (mode == RenderedExportConfig.DisplaySettingsMode.CURRENT_VIEWER
+                || mode == RenderedExportConfig.DisplaySettingsMode.SAVED_PRESET) {
+            var settings = config.getCapturedDisplaySettings();
+            if (settings != null) {
+                DisplaySettingUtils.applySettingsToDisplay(display, settings);
+            } else {
+                logger.warn("No display settings available for mode {}; using per-image defaults", mode);
+            }
+        }
+        // PER_IMAGE_SAVED: display already loaded from imageData properties
+
+        return ChannelDisplayTransformServer.createColorTransformServer(
+                baseServer, display.selectedChannels());
+    }
+
+    private static void closeQuietly(AutoCloseable closeable, String context) {
+        if (closeable != null) {
+            try {
+                closeable.close();
+            } catch (Exception e) {
+                logger.warn("Error closing resource for: {}", context, e);
+            }
         }
     }
 

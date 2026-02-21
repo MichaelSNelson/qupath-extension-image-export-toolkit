@@ -3,6 +3,7 @@ package qupath.ext.quiet.export;
 import java.io.File;
 
 import qupath.lib.common.GeneralTools;
+import qupath.lib.display.settings.ImageDisplaySettings;
 
 /**
  * Immutable configuration for a rendered image export operation.
@@ -22,7 +23,25 @@ public class RenderedExportConfig {
         OBJECT_OVERLAY
     }
 
+    /**
+     * How display settings (brightness/contrast, channel visibility, LUTs)
+     * are applied to the base image before overlay compositing.
+     */
+    public enum DisplaySettingsMode {
+        /** Each image uses its own saved display settings from ImageData properties. */
+        PER_IMAGE_SAVED,
+        /** Capture the current viewer's display settings and apply to all images. */
+        CURRENT_VIEWER,
+        /** Load a named preset from the project's saved display settings. */
+        SAVED_PRESET,
+        /** No display adjustments -- export raw pixel data (original behavior). */
+        RAW
+    }
+
     private final RenderMode renderMode;
+    private final DisplaySettingsMode displaySettingsMode;
+    private final ImageDisplaySettings capturedDisplaySettings;
+    private final String displayPresetName;
     private final String classifierName;
     private final double overlayOpacity;
     private final double downsample;
@@ -36,6 +55,9 @@ public class RenderedExportConfig {
 
     private RenderedExportConfig(Builder builder) {
         this.renderMode = builder.renderMode;
+        this.displaySettingsMode = builder.displaySettingsMode;
+        this.capturedDisplaySettings = builder.capturedDisplaySettings;
+        this.displayPresetName = builder.displayPresetName;
         this.classifierName = builder.classifierName;
         this.overlayOpacity = builder.overlayOpacity;
         this.downsample = builder.downsample;
@@ -50,6 +72,26 @@ public class RenderedExportConfig {
 
     public RenderMode getRenderMode() {
         return renderMode;
+    }
+
+    public DisplaySettingsMode getDisplaySettingsMode() {
+        return displaySettingsMode;
+    }
+
+    /**
+     * Returns the captured display settings for CURRENT_VIEWER mode.
+     * Null for other modes.
+     */
+    public ImageDisplaySettings getCapturedDisplaySettings() {
+        return capturedDisplaySettings;
+    }
+
+    /**
+     * Returns the preset name for SAVED_PRESET mode.
+     * Null for other modes.
+     */
+    public String getDisplayPresetName() {
+        return displayPresetName;
     }
 
     public String getClassifierName() {
@@ -112,6 +154,9 @@ public class RenderedExportConfig {
     public static class Builder {
 
         private RenderMode renderMode = RenderMode.CLASSIFIER_OVERLAY;
+        private DisplaySettingsMode displaySettingsMode = DisplaySettingsMode.PER_IMAGE_SAVED;
+        private ImageDisplaySettings capturedDisplaySettings;
+        private String displayPresetName;
         private String classifierName;
         private double overlayOpacity = 0.5;
         private double downsample = 4.0;
@@ -125,6 +170,21 @@ public class RenderedExportConfig {
 
         public Builder renderMode(RenderMode mode) {
             this.renderMode = mode;
+            return this;
+        }
+
+        public Builder displaySettingsMode(DisplaySettingsMode mode) {
+            this.displaySettingsMode = mode;
+            return this;
+        }
+
+        public Builder capturedDisplaySettings(ImageDisplaySettings settings) {
+            this.capturedDisplaySettings = settings;
+            return this;
+        }
+
+        public Builder displayPresetName(String name) {
+            this.displayPresetName = name;
             return this;
         }
 

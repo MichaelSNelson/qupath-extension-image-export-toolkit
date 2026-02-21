@@ -44,8 +44,20 @@ Export images with visual overlays composited onto the base image.
 |--------|-------------|
 | **Classifier Overlay** | Render a pixel classifier's output on top of the image at configurable opacity |
 | **Object Overlay** | Render annotation and/or detection objects with fill, outline, and name options |
+| **Display Settings** | Control brightness/contrast, channel visibility, and LUTs applied to the base image (see below) |
 | **Downsample** | Resolution factor (1x = full resolution, 4x = quarter, etc.) |
 | **Format** | PNG, TIFF, JPEG, OME-TIFF |
+
+#### Display Settings
+
+By default, rendered exports now apply per-image brightness/contrast and channel visibility settings -- so fluorescence images look like they do in the QuPath viewer instead of appearing as raw pixel data.
+
+| Mode | Description |
+|------|-------------|
+| **Per-Image Saved Settings** (default) | Each image uses its own saved display settings from the QuPath project. If you used "Apply to similar images" in the B&C dialog, all images will already share the same settings. |
+| **Current Viewer Settings** | Captures the display settings from the currently open image and applies them uniformly to all exported images. Requires an image to be open. |
+| **Saved Preset** | Loads a named B&C preset saved in the project (via the Brightness & Contrast dialog's save button) and applies it to all images. |
+| **Raw (No Adjustments)** | Exports raw pixel data with no display transforms. This was the only behavior prior to v0.2.1. |
 
 ### Label / Mask
 
@@ -224,6 +236,7 @@ src/main/resources/
 - **Channel selection** currently uses channel indices. The UI populates available channels, but auto-detection from image metadata is planned for a future release.
 - **Tiled GeoJSON** produces one GeoJSON file per tile via QuPath's `TileExporter.exportJson()` API (not a single consolidated file).
 - Rendered export with classifier overlay requires a pixel classifier saved in the QuPath project.
+- **Display Settings** "Current Viewer" mode requires an image to be open in the viewer at export time. "Saved Preset" mode requires presets saved via QuPath's Brightness & Contrast dialog.
 
 ## Roadmap
 

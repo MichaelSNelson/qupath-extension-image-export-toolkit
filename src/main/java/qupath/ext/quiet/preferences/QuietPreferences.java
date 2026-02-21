@@ -62,6 +62,12 @@ public class QuietPreferences {
     private static final BooleanProperty renderedShowNames =
             PathPrefs.createPersistentPreference(PREFIX + "rendered.showNames", false);
 
+    private static final StringProperty renderedDisplayMode =
+            PathPrefs.createPersistentPreference(PREFIX + "rendered.displayMode", "PER_IMAGE_SAVED");
+
+    private static final StringProperty renderedDisplayPresetName =
+            PathPrefs.createPersistentPreference(PREFIX + "rendered.displayPresetName", "");
+
     // --- Mask export preferences ---
 
     private static final StringProperty maskType =
@@ -206,6 +212,14 @@ public class QuietPreferences {
     public static BooleanProperty renderedShowNamesProperty() { return renderedShowNames; }
     public static boolean isRenderedShowNames() { return renderedShowNames.get(); }
     public static void setRenderedShowNames(boolean value) { renderedShowNames.set(value); }
+
+    public static StringProperty renderedDisplayModeProperty() { return renderedDisplayMode; }
+    public static String getRenderedDisplayMode() { return renderedDisplayMode.get(); }
+    public static void setRenderedDisplayMode(String value) { renderedDisplayMode.set(value != null ? value : "PER_IMAGE_SAVED"); }
+
+    public static StringProperty renderedDisplayPresetNameProperty() { return renderedDisplayPresetName; }
+    public static String getRenderedDisplayPresetName() { return renderedDisplayPresetName.get(); }
+    public static void setRenderedDisplayPresetName(String value) { renderedDisplayPresetName.set(value != null ? value : ""); }
 
     // ==================== Mask ====================
 

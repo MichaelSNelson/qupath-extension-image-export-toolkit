@@ -1,6 +1,8 @@
 package qupath.ext.quiet.scripting;
 
+import com.google.gson.Gson;
 import qupath.ext.quiet.export.RenderedExportConfig;
+import qupath.ext.quiet.export.RenderedExportConfig.DisplaySettingsMode;
 
 import static qupath.ext.quiet.scripting.ScriptGenerator.appendLine;
 import static qupath.ext.quiet.scripting.ScriptGenerator.quote;
@@ -9,6 +11,8 @@ import static qupath.ext.quiet.scripting.ScriptGenerator.quote;
  * Generates self-contained Groovy scripts for rendered image export.
  */
 class RenderedScriptGenerator {
+
+    private static final Gson GSON = new Gson();
 
     private RenderedScriptGenerator() {
         // Utility class
@@ -21,8 +25,91 @@ class RenderedScriptGenerator {
         return generateClassifierScript(config);
     }
 
+    /**
+     * Serialize display settings to JSON for embedding in scripts.
+     * Returns null if no settings are captured.
+     */
+    private static String serializeDisplaySettings(RenderedExportConfig config) {
+        var settings = config.getCapturedDisplaySettings();
+        if (settings == null) return null;
+        return GSON.toJson(settings);
+    }
+
+    /**
+     * Emit display-related imports (only for non-RAW modes).
+     */
+    private static void emitDisplayImports(StringBuilder sb, DisplaySettingsMode mode) {
+        if (mode == DisplaySettingsMode.RAW) return;
+        appendLine(sb, "import qupath.lib.display.ImageDisplay");
+        appendLine(sb, "import qupath.lib.display.settings.DisplaySettingUtils");
+        appendLine(sb, "import qupath.lib.gui.images.servers.ChannelDisplayTransformServer");
+        if (mode == DisplaySettingsMode.CURRENT_VIEWER) {
+            appendLine(sb, "import com.google.gson.JsonParser");
+        }
+    }
+
+    /**
+     * Emit display settings configuration variables.
+     */
+    private static void emitDisplayConfig(StringBuilder sb, RenderedExportConfig config) {
+        var mode = config.getDisplaySettingsMode();
+        appendLine(sb, "def displaySettingsMode = " + quote(mode.name()));
+        if (mode == DisplaySettingsMode.CURRENT_VIEWER) {
+            String json = serializeDisplaySettings(config);
+            appendLine(sb, "def displaySettingsJson = " + (json != null ? quote(json) : "null"));
+        } else if (mode == DisplaySettingsMode.SAVED_PRESET) {
+            String presetName = config.getDisplayPresetName();
+            appendLine(sb, "def displayPresetName = " + quote(presetName != null ? presetName : ""));
+        }
+    }
+
+    /**
+     * Emit display settings resolution code (after project is loaded, before the loop).
+     */
+    private static void emitDisplaySetup(StringBuilder sb, DisplaySettingsMode mode) {
+        if (mode == DisplaySettingsMode.RAW) return;
+
+        appendLine(sb, "// Resolve display settings");
+        appendLine(sb, "def displaySettings = null");
+        if (mode == DisplaySettingsMode.CURRENT_VIEWER) {
+            appendLine(sb, "if (displaySettingsJson != null) {");
+            appendLine(sb, "    def jsonElement = JsonParser.parseString(displaySettingsJson)");
+            appendLine(sb, "    displaySettings = DisplaySettingUtils.parseDisplaySettings(jsonElement).orElse(null)");
+            appendLine(sb, "}");
+        } else if (mode == DisplaySettingsMode.SAVED_PRESET) {
+            appendLine(sb, "def presetManager = DisplaySettingUtils.getResourcesForProject(project)");
+            appendLine(sb, "displaySettings = presetManager.get(displayPresetName)");
+            appendLine(sb, "if (displaySettings == null) {");
+            appendLine(sb, "    println \"WARNING: Display preset not found: ${displayPresetName}\"");
+            appendLine(sb, "}");
+        }
+        appendLine(sb, "");
+    }
+
+    /**
+     * Emit per-image display server wrapping code (inside the try block, after baseServer).
+     * Sets up readServer variable that should be used instead of baseServer for image reads.
+     */
+    private static void emitDisplayServerWrapping(StringBuilder sb, DisplaySettingsMode mode) {
+        if (mode == DisplaySettingsMode.RAW) {
+            appendLine(sb, "        def readServer = baseServer");
+            return;
+        }
+
+        appendLine(sb, "        // Apply display settings (brightness/contrast, channel visibility)");
+        appendLine(sb, "        def display = ImageDisplay.create(imageData)");
+        if (mode != DisplaySettingsMode.PER_IMAGE_SAVED) {
+            appendLine(sb, "        if (displaySettings != null) {");
+            appendLine(sb, "            DisplaySettingUtils.applySettingsToDisplay(display, displaySettings)");
+            appendLine(sb, "        }");
+        }
+        appendLine(sb, "        def readServer = ChannelDisplayTransformServer.createColorTransformServer(");
+        appendLine(sb, "                baseServer, display.selectedChannels())");
+    }
+
     private static String generateClassifierScript(RenderedExportConfig config) {
         var sb = new StringBuilder();
+        var displayMode = config.getDisplaySettingsMode();
 
         appendLine(sb, "/**");
         appendLine(sb, " * Classifier Overlay Export Script");
@@ -45,11 +132,13 @@ class RenderedScriptGenerator {
         appendLine(sb, "import java.awt.Graphics2D");
         appendLine(sb, "import java.awt.RenderingHints");
         appendLine(sb, "import java.awt.image.BufferedImage");
+        emitDisplayImports(sb, displayMode);
         appendLine(sb, "");
 
         // Configuration parameters
         appendLine(sb, "// ========== CONFIGURATION (modify as needed) ==========");
         appendLine(sb, "def classifierName = " + quote(config.getClassifierName()));
+        emitDisplayConfig(sb, config);
         appendLine(sb, "def overlayOpacity = " + config.getOverlayOpacity());
         appendLine(sb, "def downsample = " + config.getDownsample());
         appendLine(sb, "def outputFormat = " + quote(config.getFormat().getExtension()));
@@ -74,6 +163,9 @@ class RenderedScriptGenerator {
         appendLine(sb, "    return");
         appendLine(sb, "}");
         appendLine(sb, "");
+
+        // Display settings resolution
+        emitDisplaySetup(sb, displayMode);
 
         // Output directory
         appendLine(sb, "def outDir = new File(outputDir)");
@@ -105,15 +197,20 @@ class RenderedScriptGenerator {
         appendLine(sb, "            continue");
         appendLine(sb, "        }");
         appendLine(sb, "");
+
+        // Display server wrapping
+        emitDisplayServerWrapping(sb, displayMode);
+        appendLine(sb, "");
+
         appendLine(sb, "        classServer = new PixelClassificationImageServer(imageData, classifier)");
         appendLine(sb, "");
         appendLine(sb, "        int outW = (int) Math.ceil(baseServer.getWidth() / downsample)");
         appendLine(sb, "        int outH = (int) Math.ceil(baseServer.getHeight() / downsample)");
         appendLine(sb, "");
         appendLine(sb, "        def request = RegionRequest.createInstance(");
-        appendLine(sb, "                baseServer.getPath(), downsample,");
-        appendLine(sb, "                0, 0, baseServer.getWidth(), baseServer.getHeight())");
-        appendLine(sb, "        def baseImage = baseServer.readRegion(request)");
+        appendLine(sb, "                readServer.getPath(), downsample,");
+        appendLine(sb, "                0, 0, readServer.getWidth(), readServer.getHeight())");
+        appendLine(sb, "        def baseImage = readServer.readRegion(request)");
         appendLine(sb, "");
         appendLine(sb, "        def classRequest = RegionRequest.createInstance(");
         appendLine(sb, "                classServer.getPath(), downsample,");
@@ -183,6 +280,7 @@ class RenderedScriptGenerator {
 
     private static String generateObjectOverlayScript(RenderedExportConfig config) {
         var sb = new StringBuilder();
+        var displayMode = config.getDisplaySettingsMode();
 
         appendLine(sb, "/**");
         appendLine(sb, " * Object Overlay Export Script");
@@ -204,10 +302,12 @@ class RenderedScriptGenerator {
         appendLine(sb, "import java.awt.Graphics2D");
         appendLine(sb, "import java.awt.RenderingHints");
         appendLine(sb, "import java.awt.image.BufferedImage");
+        emitDisplayImports(sb, displayMode);
         appendLine(sb, "");
 
         // Configuration parameters
         appendLine(sb, "// ========== CONFIGURATION (modify as needed) ==========");
+        emitDisplayConfig(sb, config);
         appendLine(sb, "def overlayOpacity = " + config.getOverlayOpacity());
         appendLine(sb, "def downsample = " + config.getDownsample());
         appendLine(sb, "def outputFormat = " + quote(config.getFormat().getExtension()));
@@ -226,6 +326,9 @@ class RenderedScriptGenerator {
         appendLine(sb, "    return");
         appendLine(sb, "}");
         appendLine(sb, "");
+
+        // Display settings resolution
+        emitDisplaySetup(sb, displayMode);
 
         // Output directory
         appendLine(sb, "def outDir = new File(outputDir)");
@@ -248,13 +351,18 @@ class RenderedScriptGenerator {
         appendLine(sb, "        def imageData = entry.readImageData()");
         appendLine(sb, "        def baseServer = imageData.getServer()");
         appendLine(sb, "");
+
+        // Display server wrapping
+        emitDisplayServerWrapping(sb, displayMode);
+        appendLine(sb, "");
+
         appendLine(sb, "        int outW = (int) Math.ceil(baseServer.getWidth() / downsample)");
         appendLine(sb, "        int outH = (int) Math.ceil(baseServer.getHeight() / downsample)");
         appendLine(sb, "");
         appendLine(sb, "        def request = RegionRequest.createInstance(");
-        appendLine(sb, "                baseServer.getPath(), downsample,");
-        appendLine(sb, "                0, 0, baseServer.getWidth(), baseServer.getHeight())");
-        appendLine(sb, "        def baseImage = baseServer.readRegion(request)");
+        appendLine(sb, "                readServer.getPath(), downsample,");
+        appendLine(sb, "                0, 0, readServer.getWidth(), readServer.getHeight())");
+        appendLine(sb, "        def baseImage = readServer.readRegion(request)");
         appendLine(sb, "");
         appendLine(sb, "        def result = new BufferedImage(");
         appendLine(sb, "                baseImage.getWidth(), baseImage.getHeight(),");

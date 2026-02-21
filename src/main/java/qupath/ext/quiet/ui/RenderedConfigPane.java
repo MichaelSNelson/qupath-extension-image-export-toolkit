@@ -13,7 +13,9 @@ import javafx.scene.control.Button;
 import javafx.scene.control.CheckBox;
 import javafx.scene.control.ComboBox;
 import javafx.scene.control.Label;
+import javafx.scene.control.ListCell;
 import javafx.scene.control.Slider;
+import javafx.scene.control.Tooltip;
 import javafx.scene.layout.GridPane;
 import javafx.scene.layout.HBox;
 import javafx.scene.layout.Priority;
@@ -23,7 +25,10 @@ import javafx.util.StringConverter;
 
 import qupath.ext.quiet.export.OutputFormat;
 import qupath.ext.quiet.export.RenderedExportConfig;
+import qupath.ext.quiet.export.RenderedExportConfig.DisplaySettingsMode;
 import qupath.ext.quiet.preferences.QuietPreferences;
+import qupath.lib.display.settings.DisplaySettingUtils;
+import qupath.lib.display.settings.ImageDisplaySettings;
 import qupath.lib.gui.QuPathGUI;
 
 /**
@@ -38,6 +43,8 @@ public class RenderedConfigPane extends GridPane {
     private final QuPathGUI qupath;
 
     private ComboBox<RenderedExportConfig.RenderMode> modeCombo;
+    private ComboBox<DisplaySettingsMode> displaySettingsCombo;
+    private ComboBox<String> presetNameCombo;
     private ComboBox<String> classifierCombo;
     private Slider opacitySlider;
     private Label opacityValueLabel;
@@ -51,6 +58,8 @@ public class RenderedConfigPane extends GridPane {
     // Controls needing visibility toggling
     private Label classifierLabel;
     private HBox classifierBox;
+    private Label presetLabel;
+    private HBox presetBox;
 
     public RenderedConfigPane(QuPathGUI qupath) {
         this.qupath = qupath;
@@ -59,6 +68,7 @@ public class RenderedConfigPane extends GridPane {
         setPadding(new Insets(10));
         buildUI();
         populateClassifiers();
+        populatePresets();
         restorePreferences();
     }
 
@@ -89,6 +99,71 @@ public class RenderedConfigPane extends GridPane {
             }
         });
         add(modeCombo, 1, row);
+        row++;
+
+        // Display settings mode
+        add(new Label(resources.getString("rendered.label.displaySettings")), 0, row);
+        displaySettingsCombo = new ComboBox<>(FXCollections.observableArrayList(
+                DisplaySettingsMode.values()));
+        displaySettingsCombo.setValue(DisplaySettingsMode.PER_IMAGE_SAVED);
+        displaySettingsCombo.setConverter(new StringConverter<>() {
+            @Override
+            public String toString(DisplaySettingsMode mode) {
+                if (mode == null) return "";
+                return switch (mode) {
+                    case PER_IMAGE_SAVED -> resources.getString("rendered.display.perImage");
+                    case CURRENT_VIEWER -> resources.getString("rendered.display.currentViewer");
+                    case SAVED_PRESET -> resources.getString("rendered.display.savedPreset");
+                    case RAW -> resources.getString("rendered.display.raw");
+                };
+            }
+            @Override
+            public DisplaySettingsMode fromString(String s) {
+                return DisplaySettingsMode.PER_IMAGE_SAVED;
+            }
+        });
+        // Disable CURRENT_VIEWER when no image is open in the viewer
+        displaySettingsCombo.setCellFactory(lv -> new ListCell<>() {
+            @Override
+            protected void updateItem(DisplaySettingsMode item, boolean empty) {
+                super.updateItem(item, empty);
+                if (empty || item == null) {
+                    setText(null);
+                    setDisable(false);
+                } else {
+                    setText(displaySettingsCombo.getConverter().toString(item));
+                    if (item == DisplaySettingsMode.CURRENT_VIEWER) {
+                        boolean noViewer = qupath.getViewer() == null
+                                || qupath.getViewer().getImageData() == null;
+                        setDisable(noViewer);
+                        if (noViewer) {
+                            setTooltip(new Tooltip(
+                                    resources.getString("rendered.display.viewerRequired")));
+                        }
+                    } else {
+                        setDisable(false);
+                        setTooltip(null);
+                    }
+                }
+            }
+        });
+        displaySettingsCombo.valueProperty().addListener(
+                (obs, oldVal, newVal) -> updateDisplaySettingsVisibility(newVal));
+        add(displaySettingsCombo, 1, row);
+        row++;
+
+        // Preset name selection (SAVED_PRESET mode only)
+        presetLabel = new Label(resources.getString("rendered.label.presetName"));
+        add(presetLabel, 0, row);
+        presetNameCombo = new ComboBox<>();
+        presetNameCombo.setMaxWidth(Double.MAX_VALUE);
+        GridPane.setHgrow(presetNameCombo, Priority.ALWAYS);
+        presetNameCombo.setPromptText(resources.getString("rendered.display.noPresets"));
+        var presetRefreshButton = new Button(resources.getString("button.refresh"));
+        presetRefreshButton.setOnAction(e -> populatePresets());
+        presetBox = new HBox(5, presetNameCombo, presetRefreshButton);
+        HBox.setHgrow(presetNameCombo, Priority.ALWAYS);
+        add(presetBox, 1, row);
         row++;
 
         // Classifier selection (classifier mode only)
@@ -180,6 +255,14 @@ public class RenderedConfigPane extends GridPane {
         classifierBox.setManaged(isClassifier);
     }
 
+    private void updateDisplaySettingsVisibility(DisplaySettingsMode mode) {
+        boolean isPreset = (mode == DisplaySettingsMode.SAVED_PRESET);
+        presetLabel.setVisible(isPreset);
+        presetLabel.setManaged(isPreset);
+        presetBox.setVisible(isPreset);
+        presetBox.setManaged(isPreset);
+    }
+
     private void populateClassifiers() {
         classifierCombo.getItems().clear();
         var project = qupath.getProject();
@@ -200,11 +283,38 @@ public class RenderedConfigPane extends GridPane {
         }
     }
 
+    private void populatePresets() {
+        presetNameCombo.getItems().clear();
+        var project = qupath.getProject();
+        if (project == null) return;
+        try {
+            var manager = DisplaySettingUtils.getResourcesForProject(project);
+            var names = manager.getNames();
+            presetNameCombo.getItems().addAll(names);
+            if (!names.isEmpty()) {
+                String saved = QuietPreferences.getRenderedDisplayPresetName();
+                if (saved != null && names.contains(saved)) {
+                    presetNameCombo.setValue(saved);
+                } else {
+                    presetNameCombo.getSelectionModel().selectFirst();
+                }
+            }
+        } catch (IOException e) {
+            logger.error("Failed to load display setting presets", e);
+        }
+    }
+
     private void restorePreferences() {
         String savedMode = QuietPreferences.getRenderedMode();
         try {
             modeCombo.setValue(RenderedExportConfig.RenderMode.valueOf(savedMode));
         } catch (IllegalArgumentException e) { /* keep default */ }
+
+        String savedDisplayMode = QuietPreferences.getRenderedDisplayMode();
+        try {
+            displaySettingsCombo.setValue(DisplaySettingsMode.valueOf(savedDisplayMode));
+        } catch (IllegalArgumentException e) { /* keep default */ }
+        updateDisplaySettingsVisibility(displaySettingsCombo.getValue());
 
         opacitySlider.setValue(QuietPreferences.getRenderedOpacity());
         opacityValueLabel.setText(String.format("%.2f", QuietPreferences.getRenderedOpacity()));
@@ -228,6 +338,10 @@ public class RenderedConfigPane extends GridPane {
     public void savePreferences() {
         var mode = modeCombo.getValue();
         if (mode != null) QuietPreferences.setRenderedMode(mode.name());
+        var dsMode = displaySettingsCombo.getValue();
+        if (dsMode != null) QuietPreferences.setRenderedDisplayMode(dsMode.name());
+        var preset = presetNameCombo.getValue();
+        if (preset != null) QuietPreferences.setRenderedDisplayPresetName(preset);
         var classifier = classifierCombo.getValue();
         if (classifier != null) QuietPreferences.setRenderedClassifierName(classifier);
         QuietPreferences.setRenderedOpacity(opacitySlider.getValue());
@@ -248,8 +362,13 @@ public class RenderedConfigPane extends GridPane {
      * @return the config, or null if validation fails
      */
     public RenderedExportConfig buildConfig(File outputDir) {
+        var dsMode = displaySettingsCombo.getValue() != null
+                ? displaySettingsCombo.getValue()
+                : DisplaySettingsMode.PER_IMAGE_SAVED;
+
         var builder = new RenderedExportConfig.Builder()
                 .renderMode(modeCombo.getValue())
+                .displaySettingsMode(dsMode)
                 .overlayOpacity(opacitySlider.getValue())
                 .downsample(downsampleCombo.getValue() != null ? downsampleCombo.getValue() : 4.0)
                 .format(formatCombo.getValue())
@@ -263,7 +382,39 @@ public class RenderedConfigPane extends GridPane {
             builder.classifierName(classifierCombo.getValue());
         }
 
+        // Capture display settings based on selected mode
+        if (dsMode == DisplaySettingsMode.CURRENT_VIEWER) {
+            var viewer = qupath.getViewer();
+            if (viewer != null && viewer.getImageDisplay() != null) {
+                var settings = DisplaySettingUtils.displayToSettings(
+                        viewer.getImageDisplay(), "export");
+                builder.capturedDisplaySettings(settings);
+            }
+        } else if (dsMode == DisplaySettingsMode.SAVED_PRESET) {
+            String presetName = presetNameCombo.getValue();
+            builder.displayPresetName(presetName);
+            if (presetName != null && !presetName.isBlank()) {
+                resolvePresetSettings(presetName, builder);
+            }
+        }
+
         return builder.build();
+    }
+
+    private void resolvePresetSettings(String presetName, RenderedExportConfig.Builder builder) {
+        var project = qupath.getProject();
+        if (project == null) return;
+        try {
+            var manager = DisplaySettingUtils.getResourcesForProject(project);
+            var settings = manager.get(presetName);
+            if (settings != null) {
+                builder.capturedDisplaySettings(settings);
+            } else {
+                logger.warn("Display preset not found: {}", presetName);
+            }
+        } catch (IOException e) {
+            logger.error("Failed to load display preset: {}", presetName, e);
+        }
     }
 
     public String getClassifierName() {
