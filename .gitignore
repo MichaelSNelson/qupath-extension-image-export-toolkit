@@ -1,0 +1,41 @@
+# Javadocs
+docs/
+
+# Maven
+deploy/
+target/
+log/
+logs/
+
+# IntelliJ
+.idea/
+*.iml
+out/
+
+# Gradle
+gradle.properties
+build/
+.gradle/
+
+# Eclipse
+.settings/
+.project
+.classpath
+
+# VSCode
+.vscode/
+
+# Mac
+.DS_Store
+
+# Java
+hs_err*.log
+
+# Other
+*.tmp
+*.bak
+*.swp
+*~.nib
+*thumbs.db
+bin/
+codemap/
