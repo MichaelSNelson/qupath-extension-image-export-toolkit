@@ -105,15 +105,23 @@ class RenderedScriptGenerator {
     private static void emitScaleBarConfig(StringBuilder sb, RenderedExportConfig config) {
         appendLine(sb, "def showScaleBar = " + config.isShowScaleBar());
         appendLine(sb, "def scaleBarPosition = " + quote(config.getScaleBarPosition().name()));
-        appendLine(sb, "def scaleBarColor = " + quote(config.getScaleBarColor().name()));
+
+        // Parse hex color into RGB components for the Groovy script
+        java.awt.Color awtColor = config.getScaleBarColorAsAwt();
+        appendLine(sb, "def scaleBarColorR = " + awtColor.getRed());
+        appendLine(sb, "def scaleBarColorG = " + awtColor.getGreen());
+        appendLine(sb, "def scaleBarColorB = " + awtColor.getBlue());
+        appendLine(sb, "def scaleBarFontSize = " + config.getScaleBarFontSize());
+        appendLine(sb, "def scaleBarBoldText = " + config.isScaleBarBoldText());
     }
 
     /**
      * Emit a self-contained drawScaleBar Groovy function.
+     * Accepts RGB ints, font size (0 = auto), and bold flag.
      */
     private static void emitScaleBarFunction(StringBuilder sb) {
         appendLine(sb, "// Scale bar drawing function");
-        appendLine(sb, "def drawScaleBar(Graphics2D g2d, int imgW, int imgH, double pxSize, String pos, String barCol) {");
+        appendLine(sb, "def drawScaleBar(Graphics2D g2d, int imgW, int imgH, double pxSize, String pos, int colR, int colG, int colB, int fSize, boolean bold) {");
         appendLine(sb, "    if (pxSize <= 0) return");
         appendLine(sb, "    def niceLengths = [0.1, 0.25, 0.5, 1, 2, 5, 10, 20, 50, 100, 200, 250, 500, 1000, 2000, 5000, 10000, 20000, 50000]");
         appendLine(sb, "    double target = imgW * pxSize * 0.15");
@@ -122,10 +130,11 @@ class RenderedScriptGenerator {
         appendLine(sb, "    if (barPx < 2) return");
         appendLine(sb, "    int barH = Math.max(4, imgH / 150)");
         appendLine(sb, "    int minDim = Math.min(imgW, imgH)");
-        appendLine(sb, "    int fontSize = Math.max(12, minDim / 50)");
+        appendLine(sb, "    int fontSize = fSize > 0 ? Math.max(4, Math.min(fSize, 200)) : Math.max(12, minDim / 50)");
         appendLine(sb, "    int margin = Math.max(10, minDim / 40)");
         appendLine(sb, "    String label = barUm >= 1000 ? String.format('%d mm', (int)(barUm / 1000)) : (barUm == Math.floor(barUm) ? String.format('%d um', (int)barUm) : String.format('%.1f um', barUm))");
-        appendLine(sb, "    g2d.setFont(new Font(Font.SANS_SERIF, Font.BOLD, fontSize))");
+        appendLine(sb, "    int fontStyle = bold ? Font.BOLD : Font.PLAIN");
+        appendLine(sb, "    g2d.setFont(new Font(Font.SANS_SERIF, fontStyle, fontSize))");
         appendLine(sb, "    def fm = g2d.getFontMetrics()");
         appendLine(sb, "    int tw = fm.stringWidth(label)");
         appendLine(sb, "    int th = fm.getAscent()");
@@ -138,8 +147,9 @@ class RenderedScriptGenerator {
         appendLine(sb, "    }");
         appendLine(sb, "    int tx = bx + (barPx - tw) / 2");
         appendLine(sb, "    int ty = by - 4");
-        appendLine(sb, "    def primary = barCol == 'BLACK' ? Color.BLACK : Color.WHITE");
-        appendLine(sb, "    def outline = barCol == 'BLACK' ? Color.WHITE : Color.BLACK");
+        appendLine(sb, "    def primary = new Color(colR, colG, colB)");
+        appendLine(sb, "    double lum = (0.299 * colR + 0.587 * colG + 0.114 * colB) / 255.0");
+        appendLine(sb, "    def outline = lum > 0.5 ? Color.BLACK : Color.WHITE");
         appendLine(sb, "    g2d.setColor(outline)");
         appendLine(sb, "    g2d.fillRect(bx - 1, by - 1, barPx + 2, barH + 2)");
         appendLine(sb, "    g2d.setColor(primary)");
@@ -157,7 +167,8 @@ class RenderedScriptGenerator {
 
     /**
      * Emit per-image scale bar drawing code (after overlay painting, before g2d.dispose).
-     * Expects variables: baseServer, imageData, g2d, downsample, showScaleBar, scaleBarPosition, scaleBarColor
+     * Expects variables: baseServer, imageData, g2d, downsample, showScaleBar,
+     * scaleBarPosition, scaleBarColorR/G/B, scaleBarFontSize, scaleBarBoldText
      * and outW, outH (output image dimensions).
      */
     private static void emitScaleBarDrawing(StringBuilder sb) {
@@ -166,7 +177,7 @@ class RenderedScriptGenerator {
         appendLine(sb, "            if (cal.hasPixelSizeMicrons()) {");
         appendLine(sb, "                double pxSize = cal.getAveragedPixelSizeMicrons() * downsample");
         appendLine(sb, "                g2d.setComposite(java.awt.AlphaComposite.getInstance(java.awt.AlphaComposite.SRC_OVER, 1.0f))");
-        appendLine(sb, "                drawScaleBar(g2d, outW, outH, pxSize, scaleBarPosition, scaleBarColor)");
+        appendLine(sb, "                drawScaleBar(g2d, outW, outH, pxSize, scaleBarPosition, scaleBarColorR, scaleBarColorG, scaleBarColorB, scaleBarFontSize, scaleBarBoldText)");
         appendLine(sb, "            } else {");
         appendLine(sb, "                println \"  WARNING: Scale bar skipped -- no pixel calibration\"");
         appendLine(sb, "            }");

@@ -1,5 +1,6 @@
 package qupath.ext.quiet.export;
 
+import java.awt.Color;
 import java.io.File;
 
 import qupath.lib.common.GeneralTools;
@@ -54,7 +55,9 @@ public class RenderedExportConfig {
     private final boolean addToWorkflow;
     private final boolean showScaleBar;
     private final ScaleBarRenderer.Position scaleBarPosition;
-    private final ScaleBarRenderer.BarColor scaleBarColor;
+    private final String scaleBarColorHex;
+    private final int scaleBarFontSize;
+    private final boolean scaleBarBoldText;
 
     private RenderedExportConfig(Builder builder) {
         this.renderMode = builder.renderMode;
@@ -73,7 +76,9 @@ public class RenderedExportConfig {
         this.addToWorkflow = builder.addToWorkflow;
         this.showScaleBar = builder.showScaleBar;
         this.scaleBarPosition = builder.scaleBarPosition;
-        this.scaleBarColor = builder.scaleBarColor;
+        this.scaleBarColorHex = builder.scaleBarColorHex;
+        this.scaleBarFontSize = builder.scaleBarFontSize;
+        this.scaleBarBoldText = builder.scaleBarBoldText;
     }
 
     public RenderMode getRenderMode() {
@@ -148,8 +153,37 @@ public class RenderedExportConfig {
         return scaleBarPosition;
     }
 
-    public ScaleBarRenderer.BarColor getScaleBarColor() {
-        return scaleBarColor;
+    /**
+     * Returns the scale bar color as a hex string (e.g. "#FFFFFF").
+     */
+    public String getScaleBarColorHex() {
+        return scaleBarColorHex;
+    }
+
+    /**
+     * Returns the scale bar font size in pixels. 0 means auto-compute.
+     */
+    public int getScaleBarFontSize() {
+        return scaleBarFontSize;
+    }
+
+    /**
+     * Returns whether scale bar text should be bold.
+     */
+    public boolean isScaleBarBoldText() {
+        return scaleBarBoldText;
+    }
+
+    /**
+     * Converts the hex color string to a {@link java.awt.Color}.
+     * Falls back to white if the hex string is invalid.
+     */
+    public Color getScaleBarColorAsAwt() {
+        try {
+            return Color.decode(scaleBarColorHex);
+        } catch (NumberFormatException e) {
+            return Color.WHITE;
+        }
     }
 
     /**
@@ -187,7 +221,9 @@ public class RenderedExportConfig {
         private boolean addToWorkflow = true;
         private boolean showScaleBar = false;
         private ScaleBarRenderer.Position scaleBarPosition = ScaleBarRenderer.Position.LOWER_RIGHT;
-        private ScaleBarRenderer.BarColor scaleBarColor = ScaleBarRenderer.BarColor.WHITE;
+        private String scaleBarColorHex = "#FFFFFF";
+        private int scaleBarFontSize = 0;
+        private boolean scaleBarBoldText = true;
 
         public Builder renderMode(RenderMode mode) {
             this.renderMode = mode;
@@ -269,8 +305,18 @@ public class RenderedExportConfig {
             return this;
         }
 
-        public Builder scaleBarColor(ScaleBarRenderer.BarColor color) {
-            this.scaleBarColor = color;
+        public Builder scaleBarColorHex(String hex) {
+            this.scaleBarColorHex = hex != null ? hex : "#FFFFFF";
+            return this;
+        }
+
+        public Builder scaleBarFontSize(int size) {
+            this.scaleBarFontSize = size;
+            return this;
+        }
+
+        public Builder scaleBarBoldText(boolean bold) {
+            this.scaleBarBoldText = bold;
             return this;
         }
 

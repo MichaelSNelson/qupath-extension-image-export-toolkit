@@ -62,6 +62,37 @@ class RenderedScriptGeneratorTest {
     }
 
     @Test
+    void testScaleBarScriptContainsRgbAndFontConfig() {
+        RenderedExportConfig config = new RenderedExportConfig.Builder()
+                .classifierName("test_classifier")
+                .outputDirectory(tempDir)
+                .showScaleBar(true)
+                .scaleBarColorHex("#FF8000")
+                .scaleBarFontSize(24)
+                .scaleBarBoldText(false)
+                .build();
+
+        String script = ScriptGenerator.generate(ExportCategory.RENDERED, config);
+
+        assertTrue(script.contains("scaleBarColorR"), "Script should contain scaleBarColorR");
+        assertTrue(script.contains("scaleBarColorG"), "Script should contain scaleBarColorG");
+        assertTrue(script.contains("scaleBarColorB"), "Script should contain scaleBarColorB");
+        assertTrue(script.contains("scaleBarFontSize"), "Script should contain scaleBarFontSize");
+        assertTrue(script.contains("scaleBarBoldText"), "Script should contain scaleBarBoldText");
+        // Verify the RGB values for #FF8000
+        assertTrue(script.contains("scaleBarColorR = 255"), "Red should be 255");
+        assertTrue(script.contains("scaleBarColorG = 128"), "Green should be 128");
+        assertTrue(script.contains("scaleBarColorB = 0"), "Blue should be 0");
+        assertTrue(script.contains("scaleBarFontSize = 24"), "Font size should be 24");
+        assertTrue(script.contains("scaleBarBoldText = false"), "Bold should be false");
+        // Verify luminance-based outline in the function
+        assertTrue(script.contains("new Color(colR, colG, colB)"),
+                "Function should construct Color from RGB");
+        assertTrue(script.contains("0.299"),
+                "Function should use luminance formula");
+    }
+
+    @Test
     void testClassifierScriptContainsDirectCompositing() {
         String script = ScriptGenerator.generate(ExportCategory.RENDERED, classifierConfig);
 

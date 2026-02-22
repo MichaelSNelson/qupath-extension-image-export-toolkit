@@ -1,5 +1,6 @@
 package qupath.ext.quiet.ui;
 
+import java.awt.image.BufferedImage;
 import java.io.File;
 import java.io.IOException;
 import java.util.ResourceBundle;
@@ -7,30 +8,43 @@ import java.util.ResourceBundle;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import javafx.application.Platform;
 import javafx.collections.FXCollections;
+import javafx.embed.swing.SwingFXUtils;
 import javafx.geometry.Insets;
+import javafx.scene.Scene;
 import javafx.scene.control.Button;
 import javafx.scene.control.CheckBox;
+import javafx.scene.control.ColorPicker;
 import javafx.scene.control.ComboBox;
 import javafx.scene.control.Label;
 import javafx.scene.control.ListCell;
+import javafx.scene.control.ProgressIndicator;
 import javafx.scene.control.Slider;
+import javafx.scene.control.Spinner;
+import javafx.scene.control.SpinnerValueFactory;
 import javafx.scene.control.Tooltip;
+import javafx.scene.image.ImageView;
 import javafx.scene.layout.GridPane;
 import javafx.scene.layout.HBox;
 import javafx.scene.layout.Priority;
+import javafx.scene.layout.StackPane;
 import javafx.scene.text.Font;
 import javafx.scene.text.FontWeight;
+import javafx.stage.Stage;
 import javafx.util.StringConverter;
 
 import qupath.ext.quiet.export.OutputFormat;
 import qupath.ext.quiet.export.RenderedExportConfig;
 import qupath.ext.quiet.export.RenderedExportConfig.DisplaySettingsMode;
+import qupath.ext.quiet.export.RenderedImageExporter;
 import qupath.ext.quiet.export.ScaleBarRenderer;
 import qupath.ext.quiet.preferences.QuietPreferences;
+import qupath.lib.classifiers.pixel.PixelClassifier;
 import qupath.lib.display.settings.DisplaySettingUtils;
 import qupath.lib.display.settings.ImageDisplaySettings;
 import qupath.lib.gui.QuPathGUI;
+import qupath.lib.images.ImageData;
 
 /**
  * Step 2a of the export wizard: Configure rendered image export.
@@ -57,7 +71,10 @@ public class RenderedConfigPane extends GridPane {
     private CheckBox showNamesCheck;
     private CheckBox showScaleBarCheck;
     private ComboBox<ScaleBarRenderer.Position> scaleBarPositionCombo;
-    private ComboBox<ScaleBarRenderer.BarColor> scaleBarColorCombo;
+    private ColorPicker scaleBarColorPicker;
+    private Spinner<Integer> scaleBarFontSizeSpinner;
+    private CheckBox scaleBarBoldCheck;
+    private Button previewButton;
 
     // Controls needing visibility toggling
     private Label classifierLabel;
@@ -66,6 +83,7 @@ public class RenderedConfigPane extends GridPane {
     private HBox presetBox;
     private Label scaleBarPositionLabel;
     private Label scaleBarColorLabel;
+    private Label scaleBarFontSizeLabel;
 
     public RenderedConfigPane(QuPathGUI qupath) {
         this.qupath = qupath;
@@ -279,29 +297,55 @@ public class RenderedConfigPane extends GridPane {
 
         scaleBarColorLabel = new Label(resources.getString("rendered.label.scaleBarColor"));
         add(scaleBarColorLabel, 0, row);
-        scaleBarColorCombo = new ComboBox<>(FXCollections.observableArrayList(
-                ScaleBarRenderer.BarColor.values()));
-        scaleBarColorCombo.setValue(ScaleBarRenderer.BarColor.WHITE);
-        scaleBarColorCombo.setConverter(new StringConverter<>() {
+        scaleBarColorPicker = new ColorPicker(javafx.scene.paint.Color.WHITE);
+        add(scaleBarColorPicker, 1, row);
+        row++;
+
+        scaleBarFontSizeLabel = new Label(resources.getString("rendered.label.scaleBarFontSize"));
+        add(scaleBarFontSizeLabel, 0, row);
+        var fontSizeFactory = new SpinnerValueFactory.IntegerSpinnerValueFactory(0, 72, 0);
+        fontSizeFactory.setConverter(new StringConverter<>() {
             @Override
-            public String toString(ScaleBarRenderer.BarColor color) {
-                if (color == null) return "";
-                return switch (color) {
-                    case WHITE -> resources.getString("rendered.scaleBar.white");
-                    case BLACK -> resources.getString("rendered.scaleBar.black");
-                };
+            public String toString(Integer value) {
+                if (value == null || value == 0)
+                    return resources.getString("rendered.scaleBar.fontSizeAuto");
+                return String.valueOf(value);
             }
             @Override
-            public ScaleBarRenderer.BarColor fromString(String s) {
-                return ScaleBarRenderer.BarColor.WHITE;
+            public Integer fromString(String string) {
+                if (string == null || string.isBlank()
+                        || string.equalsIgnoreCase(resources.getString("rendered.scaleBar.fontSizeAuto"))) {
+                    return 0;
+                }
+                try { return Integer.parseInt(string); }
+                catch (NumberFormatException e) { return 0; }
             }
         });
-        add(scaleBarColorCombo, 1, row);
+        scaleBarFontSizeSpinner = new Spinner<>(fontSizeFactory);
+        scaleBarFontSizeSpinner.setEditable(true);
+        add(scaleBarFontSizeSpinner, 1, row);
+        row++;
+
+        scaleBarBoldCheck = new CheckBox(resources.getString("rendered.label.scaleBarBold"));
+        scaleBarBoldCheck.setSelected(true);
+        add(scaleBarBoldCheck, 1, row);
+        row++;
+
+        // Preview button
+        previewButton = new Button(resources.getString("rendered.label.previewImage"));
+        previewButton.setOnAction(e -> handlePreview());
+        previewButton.setMaxWidth(Double.MAX_VALUE);
+        add(previewButton, 0, row, 2, 1);
+        row++;
 
         // Scale bar visibility toggling
         showScaleBarCheck.selectedProperty().addListener(
                 (obs, oldVal, newVal) -> updateScaleBarVisibility(newVal));
         updateScaleBarVisibility(false);
+
+        // Preview button enabled state depends on image being open
+        updatePreviewButtonState();
+        qupath.imageDataProperty().addListener((obs, oldVal, newVal) -> updatePreviewButtonState());
 
         // Mode switching
         modeCombo.valueProperty().addListener((obs, oldMode, newMode) -> updateModeVisibility(newMode));
@@ -333,8 +377,20 @@ public class RenderedConfigPane extends GridPane {
         scaleBarPositionCombo.setManaged(showScaleBar);
         scaleBarColorLabel.setVisible(showScaleBar);
         scaleBarColorLabel.setManaged(showScaleBar);
-        scaleBarColorCombo.setVisible(showScaleBar);
-        scaleBarColorCombo.setManaged(showScaleBar);
+        scaleBarColorPicker.setVisible(showScaleBar);
+        scaleBarColorPicker.setManaged(showScaleBar);
+        scaleBarFontSizeLabel.setVisible(showScaleBar);
+        scaleBarFontSizeLabel.setManaged(showScaleBar);
+        scaleBarFontSizeSpinner.setVisible(showScaleBar);
+        scaleBarFontSizeSpinner.setManaged(showScaleBar);
+        scaleBarBoldCheck.setVisible(showScaleBar);
+        scaleBarBoldCheck.setManaged(showScaleBar);
+    }
+
+    private void updatePreviewButtonState() {
+        boolean hasImage = qupath.getViewer() != null
+                && qupath.getViewer().getImageData() != null;
+        previewButton.setDisable(!hasImage);
     }
 
     private void wireTooltips() {
@@ -351,7 +407,10 @@ public class RenderedConfigPane extends GridPane {
         showNamesCheck.setTooltip(createTooltip("tooltip.rendered.showNames"));
         showScaleBarCheck.setTooltip(createTooltip("tooltip.rendered.showScaleBar"));
         scaleBarPositionCombo.setTooltip(createTooltip("tooltip.rendered.scaleBarPosition"));
-        scaleBarColorCombo.setTooltip(createTooltip("tooltip.rendered.scaleBarColor"));
+        scaleBarColorPicker.setTooltip(createTooltip("tooltip.rendered.scaleBarColor"));
+        scaleBarFontSizeSpinner.setTooltip(createTooltip("tooltip.rendered.scaleBarFontSize"));
+        scaleBarBoldCheck.setTooltip(createTooltip("tooltip.rendered.scaleBarBold"));
+        previewButton.setTooltip(createTooltip("tooltip.rendered.previewImage"));
     }
 
     private static Tooltip createTooltip(String key) {
@@ -435,10 +494,14 @@ public class RenderedConfigPane extends GridPane {
             scaleBarPositionCombo.setValue(
                     ScaleBarRenderer.Position.valueOf(QuietPreferences.getRenderedScaleBarPosition()));
         } catch (IllegalArgumentException e) { /* keep default */ }
-        try {
-            scaleBarColorCombo.setValue(
-                    ScaleBarRenderer.BarColor.valueOf(QuietPreferences.getRenderedScaleBarColor()));
-        } catch (IllegalArgumentException e) { /* keep default */ }
+
+        // Restore scale bar color from hex string (handle legacy enum names gracefully)
+        String savedColor = QuietPreferences.getRenderedScaleBarColor();
+        scaleBarColorPicker.setValue(hexToFxColor(savedColor));
+
+        scaleBarFontSizeSpinner.getValueFactory().setValue(QuietPreferences.getRenderedScaleBarFontSize());
+        scaleBarBoldCheck.setSelected(QuietPreferences.isRenderedScaleBarBold());
+
         updateScaleBarVisibility(showScaleBarCheck.isSelected());
     }
 
@@ -466,8 +529,10 @@ public class RenderedConfigPane extends GridPane {
         QuietPreferences.setRenderedShowScaleBar(showScaleBarCheck.isSelected());
         var sbPos = scaleBarPositionCombo.getValue();
         if (sbPos != null) QuietPreferences.setRenderedScaleBarPosition(sbPos.name());
-        var sbColor = scaleBarColorCombo.getValue();
-        if (sbColor != null) QuietPreferences.setRenderedScaleBarColor(sbColor.name());
+        QuietPreferences.setRenderedScaleBarColor(fxColorToHex(scaleBarColorPicker.getValue()));
+        QuietPreferences.setRenderedScaleBarFontSize(
+                scaleBarFontSizeSpinner.getValue() != null ? scaleBarFontSizeSpinner.getValue() : 0);
+        QuietPreferences.setRenderedScaleBarBold(scaleBarBoldCheck.isSelected());
     }
 
     /**
@@ -496,9 +561,10 @@ public class RenderedConfigPane extends GridPane {
                 .scaleBarPosition(scaleBarPositionCombo.getValue() != null
                         ? scaleBarPositionCombo.getValue()
                         : ScaleBarRenderer.Position.LOWER_RIGHT)
-                .scaleBarColor(scaleBarColorCombo.getValue() != null
-                        ? scaleBarColorCombo.getValue()
-                        : ScaleBarRenderer.BarColor.WHITE);
+                .scaleBarColorHex(fxColorToHex(scaleBarColorPicker.getValue()))
+                .scaleBarFontSize(scaleBarFontSizeSpinner.getValue() != null
+                        ? scaleBarFontSizeSpinner.getValue() : 0)
+                .scaleBarBoldText(scaleBarBoldCheck.isSelected());
 
         if (modeCombo.getValue() == RenderedExportConfig.RenderMode.CLASSIFIER_OVERLAY) {
             builder.classifierName(classifierCombo.getValue());
@@ -539,11 +605,130 @@ public class RenderedConfigPane extends GridPane {
         }
     }
 
+    /**
+     * Handle the preview button click.
+     * Renders the current image with current settings in a background thread
+     * and shows the result in a popup window.
+     */
+    private void handlePreview() {
+        var viewer = qupath.getViewer();
+        if (viewer == null || viewer.getImageData() == null) {
+            return;
+        }
+
+        @SuppressWarnings("unchecked")
+        ImageData<BufferedImage> imageData = (ImageData<BufferedImage>) viewer.getImageData();
+
+        // Build config with a temp dir placeholder (not used for preview)
+        File tempDir = new File(System.getProperty("java.io.tmpdir"));
+        RenderedExportConfig config;
+        try {
+            config = buildConfig(tempDir);
+        } catch (Exception e) {
+            logger.error("Failed to build config for preview", e);
+            return;
+        }
+
+        // Load classifier if needed
+        PixelClassifier classifier = null;
+        if (config.getRenderMode() == RenderedExportConfig.RenderMode.CLASSIFIER_OVERLAY) {
+            String classifierName = config.getClassifierName();
+            if (classifierName == null || classifierName.isBlank()) {
+                logger.warn("No classifier selected for preview");
+                return;
+            }
+            var project = qupath.getProject();
+            if (project != null) {
+                try {
+                    classifier = project.getPixelClassifiers().get(classifierName);
+                } catch (Exception e) {
+                    logger.error("Failed to load classifier for preview: {}", classifierName, e);
+                    return;
+                }
+            }
+        }
+
+        // Show progress indicator
+        var progressStage = new Stage();
+        progressStage.setTitle("Rendering Preview...");
+        var progressIndicator = new ProgressIndicator(-1);
+        progressIndicator.setPrefSize(80, 80);
+        var progressPane = new StackPane(progressIndicator);
+        progressPane.setPadding(new Insets(20));
+        progressStage.setScene(new Scene(progressPane));
+        progressStage.setResizable(false);
+        progressStage.show();
+
+        final PixelClassifier finalClassifier = classifier;
+
+        Thread previewThread = new Thread(() -> {
+            try {
+                BufferedImage preview = RenderedImageExporter.renderPreview(
+                        imageData, finalClassifier, config, 800);
+
+                Platform.runLater(() -> {
+                    progressStage.close();
+                    showPreviewWindow(preview);
+                });
+            } catch (Exception e) {
+                logger.error("Preview rendering failed", e);
+                Platform.runLater(progressStage::close);
+            }
+        });
+        previewThread.setDaemon(true);
+        previewThread.setName("quiet-preview");
+        previewThread.start();
+    }
+
+    private void showPreviewWindow(BufferedImage preview) {
+        var fxImage = SwingFXUtils.toFXImage(preview, null);
+        var imageView = new ImageView(fxImage);
+        imageView.setPreserveRatio(true);
+        imageView.setFitWidth(800);
+        imageView.setFitHeight(600);
+
+        var pane = new StackPane(imageView);
+        pane.setPadding(new Insets(5));
+
+        var stage = new Stage();
+        stage.setTitle("Export Preview");
+        stage.setScene(new Scene(pane));
+        stage.setResizable(true);
+        stage.show();
+    }
+
     public String getClassifierName() {
         return classifierCombo.getValue();
     }
 
     public RenderedExportConfig.RenderMode getRenderMode() {
         return modeCombo.getValue();
+    }
+
+    /**
+     * Convert a JavaFX Color to a hex string like "#RRGGBB".
+     */
+    private static String fxColorToHex(javafx.scene.paint.Color color) {
+        if (color == null) return "#FFFFFF";
+        int r = (int) (color.getRed() * 255);
+        int g = (int) (color.getGreen() * 255);
+        int b = (int) (color.getBlue() * 255);
+        return String.format("#%02X%02X%02X", r, g, b);
+    }
+
+    /**
+     * Convert a hex string to a JavaFX Color.
+     * Handles legacy enum names ("WHITE", "BLACK") gracefully.
+     */
+    private static javafx.scene.paint.Color hexToFxColor(String hex) {
+        if (hex == null || hex.isBlank()) return javafx.scene.paint.Color.WHITE;
+        // Handle legacy enum names from old preferences
+        if ("WHITE".equalsIgnoreCase(hex)) return javafx.scene.paint.Color.WHITE;
+        if ("BLACK".equalsIgnoreCase(hex)) return javafx.scene.paint.Color.BLACK;
+        try {
+            return javafx.scene.paint.Color.web(hex);
+        } catch (IllegalArgumentException e) {
+            return javafx.scene.paint.Color.WHITE;
+        }
     }
 }

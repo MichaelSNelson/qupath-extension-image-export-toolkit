@@ -75,7 +75,13 @@ public class QuietPreferences {
             PathPrefs.createPersistentPreference(PREFIX + "rendered.scaleBarPosition", "LOWER_RIGHT");
 
     private static final StringProperty renderedScaleBarColor =
-            PathPrefs.createPersistentPreference(PREFIX + "rendered.scaleBarColor", "WHITE");
+            PathPrefs.createPersistentPreference(PREFIX + "rendered.scaleBarColor", "#FFFFFF");
+
+    private static final IntegerProperty renderedScaleBarFontSize =
+            PathPrefs.createPersistentPreference(PREFIX + "rendered.scaleBarFontSize", 0);
+
+    private static final BooleanProperty renderedScaleBarBold =
+            PathPrefs.createPersistentPreference(PREFIX + "rendered.scaleBarBold", true);
 
     // --- Mask export preferences ---
 
@@ -240,7 +246,15 @@ public class QuietPreferences {
 
     public static StringProperty renderedScaleBarColorProperty() { return renderedScaleBarColor; }
     public static String getRenderedScaleBarColor() { return renderedScaleBarColor.get(); }
-    public static void setRenderedScaleBarColor(String value) { renderedScaleBarColor.set(value != null ? value : "WHITE"); }
+    public static void setRenderedScaleBarColor(String value) { renderedScaleBarColor.set(value != null ? value : "#FFFFFF"); }
+
+    public static IntegerProperty renderedScaleBarFontSizeProperty() { return renderedScaleBarFontSize; }
+    public static int getRenderedScaleBarFontSize() { return renderedScaleBarFontSize.get(); }
+    public static void setRenderedScaleBarFontSize(int value) { renderedScaleBarFontSize.set(value); }
+
+    public static BooleanProperty renderedScaleBarBoldProperty() { return renderedScaleBarBold; }
+    public static boolean isRenderedScaleBarBold() { return renderedScaleBarBold.get(); }
+    public static void setRenderedScaleBarBold(boolean value) { renderedScaleBarBold.set(value); }
 
     // ==================== Mask ====================
 

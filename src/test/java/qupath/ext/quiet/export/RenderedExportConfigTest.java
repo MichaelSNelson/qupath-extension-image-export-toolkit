@@ -153,6 +153,40 @@ class RenderedExportConfigTest {
         assertFalse(config.isFillAnnotations());
         assertFalse(config.isShowNames());
         assertTrue(config.isAddToWorkflow());
+        // Scale bar defaults
+        assertFalse(config.isShowScaleBar());
+        assertEquals("#FFFFFF", config.getScaleBarColorHex());
+        assertEquals(0, config.getScaleBarFontSize());
+        assertTrue(config.isScaleBarBoldText());
+        assertEquals(java.awt.Color.WHITE, config.getScaleBarColorAsAwt());
+    }
+
+    @Test
+    void testScaleBarColorHexConversion() {
+        RenderedExportConfig config = new RenderedExportConfig.Builder()
+                .classifierName("test")
+                .outputDirectory(tempDir)
+                .scaleBarColorHex("#FF0000")
+                .scaleBarFontSize(24)
+                .scaleBarBoldText(false)
+                .build();
+
+        assertEquals("#FF0000", config.getScaleBarColorHex());
+        assertEquals(java.awt.Color.RED, config.getScaleBarColorAsAwt());
+        assertEquals(24, config.getScaleBarFontSize());
+        assertFalse(config.isScaleBarBoldText());
+    }
+
+    @Test
+    void testScaleBarColorHexFallback() {
+        RenderedExportConfig config = new RenderedExportConfig.Builder()
+                .classifierName("test")
+                .outputDirectory(tempDir)
+                .scaleBarColorHex("not-a-color")
+                .build();
+
+        // Invalid hex should fall back to white
+        assertEquals(java.awt.Color.WHITE, config.getScaleBarColorAsAwt());
     }
 
     @Test

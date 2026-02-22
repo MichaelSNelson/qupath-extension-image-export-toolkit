@@ -70,60 +70,8 @@ public class RenderedImageExporter {
             classificationServer = new PixelClassificationImageServer(imageData, classifier);
             displayServer = resolveDisplayServer(imageData, baseServer, config);
 
-            double downsample = config.getDownsample();
-            int outputWidth = (int) Math.ceil(baseServer.getWidth() / downsample);
-            int outputHeight = (int) Math.ceil(baseServer.getHeight() / downsample);
-
-            ImageServer<BufferedImage> readServer =
-                    displayServer != null ? displayServer : baseServer;
-            RegionRequest request = RegionRequest.createInstance(
-                    readServer.getPath(), downsample,
-                    0, 0, readServer.getWidth(), readServer.getHeight());
-
-            logger.debug("Reading base image at downsample {} for: {}", downsample, entryName);
-            BufferedImage baseImage = readServer.readRegion(request);
-
-            logger.debug("Reading classification at downsample {} for: {}", downsample, entryName);
-            RegionRequest classRequest = RegionRequest.createInstance(
-                    classificationServer.getPath(), downsample,
-                    0, 0, classificationServer.getWidth(), classificationServer.getHeight());
-            BufferedImage classImage = classificationServer.readRegion(classRequest);
-
-            // Create output image (TYPE_INT_RGB strips alpha for JPEG compatibility)
-            BufferedImage result = new BufferedImage(
-                    baseImage.getWidth(), baseImage.getHeight(),
-                    BufferedImage.TYPE_INT_RGB);
-
-            Graphics2D g2d = result.createGraphics();
-            g2d.setRenderingHint(
-                    RenderingHints.KEY_INTERPOLATION,
-                    RenderingHints.VALUE_INTERPOLATION_BILINEAR);
-
-            g2d.drawImage(baseImage, 0, 0, null);
-
-            float opacity = (float) config.getOverlayOpacity();
-            if (opacity > 0 && classImage != null) {
-                g2d.setComposite(AlphaComposite.getInstance(
-                        AlphaComposite.SRC_OVER, opacity));
-                g2d.drawImage(classImage,
-                        0, 0, baseImage.getWidth(), baseImage.getHeight(), null);
-            }
-
-            // Optionally paint annotations/detections on top of classifier
-            if (config.isIncludeAnnotations() || config.isIncludeDetections()) {
-                g2d.setComposite(AlphaComposite.getInstance(
-                        AlphaComposite.SRC_OVER, 1.0f));
-                paintObjects(g2d, imageData, downsample, outputWidth, outputHeight,
-                        config.isIncludeAnnotations(), config.isIncludeDetections(),
-                        config.isFillAnnotations(), config.isShowNames());
-            }
-
-            maybeDrawScaleBar(g2d, imageData, config,
-                    baseImage.getWidth(), baseImage.getHeight(), entryName);
-
-            g2d.dispose();
-            baseImage = null;
-            classImage = null;
+            BufferedImage result = renderClassifierComposite(
+                    imageData, baseServer, classificationServer, displayServer, config);
 
             String filename = config.buildOutputFilename(entryName);
             File outputFile = new File(config.getOutputDirectory(), filename);
@@ -160,44 +108,8 @@ public class RenderedImageExporter {
         try {
             displayServer = resolveDisplayServer(imageData, baseServer, config);
 
-            double downsample = config.getDownsample();
-            int outputWidth = (int) Math.ceil(baseServer.getWidth() / downsample);
-            int outputHeight = (int) Math.ceil(baseServer.getHeight() / downsample);
-
-            ImageServer<BufferedImage> readServer =
-                    displayServer != null ? displayServer : baseServer;
-            RegionRequest request = RegionRequest.createInstance(
-                    readServer.getPath(), downsample,
-                    0, 0, readServer.getWidth(), readServer.getHeight());
-
-            logger.debug("Reading base image at downsample {} for: {}", downsample, entryName);
-            BufferedImage baseImage = readServer.readRegion(request);
-
-            BufferedImage result = new BufferedImage(
-                    baseImage.getWidth(), baseImage.getHeight(),
-                    BufferedImage.TYPE_INT_RGB);
-
-            Graphics2D g2d = result.createGraphics();
-            g2d.setRenderingHint(
-                    RenderingHints.KEY_INTERPOLATION,
-                    RenderingHints.VALUE_INTERPOLATION_BILINEAR);
-
-            g2d.drawImage(baseImage, 0, 0, null);
-
-            float opacity = (float) config.getOverlayOpacity();
-            if (opacity > 0) {
-                g2d.setComposite(AlphaComposite.getInstance(
-                        AlphaComposite.SRC_OVER, opacity));
-                paintObjects(g2d, imageData, downsample, outputWidth, outputHeight,
-                        config.isIncludeAnnotations(), config.isIncludeDetections(),
-                        config.isFillAnnotations(), config.isShowNames());
-            }
-
-            maybeDrawScaleBar(g2d, imageData, config,
-                    baseImage.getWidth(), baseImage.getHeight(), entryName);
-
-            g2d.dispose();
-            baseImage = null;
+            BufferedImage result = renderObjectComposite(
+                    imageData, baseServer, displayServer, config);
 
             String filename = config.buildOutputFilename(entryName);
             File outputFile = new File(config.getOutputDirectory(), filename);
@@ -210,6 +122,192 @@ public class RenderedImageExporter {
         } finally {
             closeQuietly(displayServer, entryName);
         }
+    }
+
+    /**
+     * Renders a preview of the current image with the given config.
+     * Returns a BufferedImage sized to fit within {@code maxDimension} on its longest side.
+     *
+     * @param imageData    the image data to preview
+     * @param classifier   the pixel classifier (null for OBJECT_OVERLAY mode)
+     * @param config       rendered export configuration
+     * @param maxDimension maximum pixel dimension for the longest side of the preview
+     * @return the rendered preview image
+     * @throws IOException if rendering fails
+     */
+    public static BufferedImage renderPreview(ImageData<BufferedImage> imageData,
+                                              PixelClassifier classifier,
+                                              RenderedExportConfig config,
+                                              int maxDimension) throws IOException {
+
+        ImageServer<BufferedImage> baseServer = imageData.getServer();
+        int serverW = baseServer.getWidth();
+        int serverH = baseServer.getHeight();
+
+        // Compute downsample to fit within maxDimension
+        double longestSide = Math.max(serverW, serverH);
+        double previewDownsample = Math.max(config.getDownsample(),
+                longestSide / maxDimension);
+
+        // Build a temporary config with the preview downsample
+        // (reuse all other settings from the original config)
+        RenderedExportConfig previewConfig = new RenderedExportConfig.Builder()
+                .renderMode(config.getRenderMode())
+                .displaySettingsMode(config.getDisplaySettingsMode())
+                .capturedDisplaySettings(config.getCapturedDisplaySettings())
+                .displayPresetName(config.getDisplayPresetName())
+                .classifierName(config.getClassifierName())
+                .overlayOpacity(config.getOverlayOpacity())
+                .downsample(previewDownsample)
+                .format(config.getFormat())
+                .outputDirectory(config.getOutputDirectory())
+                .includeAnnotations(config.isIncludeAnnotations())
+                .includeDetections(config.isIncludeDetections())
+                .fillAnnotations(config.isFillAnnotations())
+                .showNames(config.isShowNames())
+                .showScaleBar(config.isShowScaleBar())
+                .scaleBarPosition(config.getScaleBarPosition())
+                .scaleBarColorHex(config.getScaleBarColorHex())
+                .scaleBarFontSize(config.getScaleBarFontSize())
+                .scaleBarBoldText(config.isScaleBarBoldText())
+                .build();
+
+        ImageServer<BufferedImage> displayServer = null;
+        PixelClassificationImageServer classificationServer = null;
+
+        try {
+            displayServer = resolveDisplayServer(imageData, baseServer, previewConfig);
+
+            if (config.getRenderMode() == RenderedExportConfig.RenderMode.CLASSIFIER_OVERLAY
+                    && classifier != null) {
+                classificationServer = new PixelClassificationImageServer(imageData, classifier);
+                try {
+                    return renderClassifierComposite(
+                            imageData, baseServer, classificationServer, displayServer, previewConfig);
+                } catch (Exception e) {
+                    throw new IOException("Failed to render classifier preview", e);
+                }
+            } else {
+                try {
+                    return renderObjectComposite(
+                            imageData, baseServer, displayServer, previewConfig);
+                } catch (Exception e) {
+                    throw new IOException("Failed to render object overlay preview", e);
+                }
+            }
+        } finally {
+            closeQuietly(displayServer, "preview");
+            closeQuietly(classificationServer, "preview");
+        }
+    }
+
+    /**
+     * Shared rendering logic for classifier overlay compositing.
+     */
+    private static BufferedImage renderClassifierComposite(
+            ImageData<BufferedImage> imageData,
+            ImageServer<BufferedImage> baseServer,
+            PixelClassificationImageServer classificationServer,
+            ImageServer<BufferedImage> displayServer,
+            RenderedExportConfig config) throws Exception {
+
+        double downsample = config.getDownsample();
+        int outputWidth = (int) Math.ceil(baseServer.getWidth() / downsample);
+        int outputHeight = (int) Math.ceil(baseServer.getHeight() / downsample);
+
+        ImageServer<BufferedImage> readServer =
+                displayServer != null ? displayServer : baseServer;
+        RegionRequest request = RegionRequest.createInstance(
+                readServer.getPath(), downsample,
+                0, 0, readServer.getWidth(), readServer.getHeight());
+
+        BufferedImage baseImage = readServer.readRegion(request);
+
+        RegionRequest classRequest = RegionRequest.createInstance(
+                classificationServer.getPath(), downsample,
+                0, 0, classificationServer.getWidth(), classificationServer.getHeight());
+        BufferedImage classImage = classificationServer.readRegion(classRequest);
+
+        BufferedImage result = new BufferedImage(
+                baseImage.getWidth(), baseImage.getHeight(),
+                BufferedImage.TYPE_INT_RGB);
+
+        Graphics2D g2d = result.createGraphics();
+        g2d.setRenderingHint(
+                RenderingHints.KEY_INTERPOLATION,
+                RenderingHints.VALUE_INTERPOLATION_BILINEAR);
+
+        g2d.drawImage(baseImage, 0, 0, null);
+
+        float opacity = (float) config.getOverlayOpacity();
+        if (opacity > 0 && classImage != null) {
+            g2d.setComposite(AlphaComposite.getInstance(
+                    AlphaComposite.SRC_OVER, opacity));
+            g2d.drawImage(classImage,
+                    0, 0, baseImage.getWidth(), baseImage.getHeight(), null);
+        }
+
+        if (config.isIncludeAnnotations() || config.isIncludeDetections()) {
+            g2d.setComposite(AlphaComposite.getInstance(
+                    AlphaComposite.SRC_OVER, 1.0f));
+            paintObjects(g2d, imageData, downsample, outputWidth, outputHeight,
+                    config.isIncludeAnnotations(), config.isIncludeDetections(),
+                    config.isFillAnnotations(), config.isShowNames());
+        }
+
+        maybeDrawScaleBar(g2d, imageData, config,
+                baseImage.getWidth(), baseImage.getHeight());
+
+        g2d.dispose();
+        return result;
+    }
+
+    /**
+     * Shared rendering logic for object overlay compositing.
+     */
+    private static BufferedImage renderObjectComposite(
+            ImageData<BufferedImage> imageData,
+            ImageServer<BufferedImage> baseServer,
+            ImageServer<BufferedImage> displayServer,
+            RenderedExportConfig config) throws Exception {
+
+        double downsample = config.getDownsample();
+        int outputWidth = (int) Math.ceil(baseServer.getWidth() / downsample);
+        int outputHeight = (int) Math.ceil(baseServer.getHeight() / downsample);
+
+        ImageServer<BufferedImage> readServer =
+                displayServer != null ? displayServer : baseServer;
+        RegionRequest request = RegionRequest.createInstance(
+                readServer.getPath(), downsample,
+                0, 0, readServer.getWidth(), readServer.getHeight());
+
+        BufferedImage baseImage = readServer.readRegion(request);
+
+        BufferedImage result = new BufferedImage(
+                baseImage.getWidth(), baseImage.getHeight(),
+                BufferedImage.TYPE_INT_RGB);
+
+        Graphics2D g2d = result.createGraphics();
+        g2d.setRenderingHint(
+                RenderingHints.KEY_INTERPOLATION,
+                RenderingHints.VALUE_INTERPOLATION_BILINEAR);
+
+        g2d.drawImage(baseImage, 0, 0, null);
+
+        float opacity = (float) config.getOverlayOpacity();
+        if (opacity > 0) {
+            g2d.setComposite(AlphaComposite.getInstance(
+                    AlphaComposite.SRC_OVER, opacity));
+            paintObjects(g2d, imageData, downsample, outputWidth, outputHeight,
+                    config.isIncludeAnnotations(), config.isIncludeDetections(),
+                    config.isFillAnnotations(), config.isShowNames());
+        }
+
+        maybeDrawScaleBar(g2d, imageData, config,
+                baseImage.getWidth(), baseImage.getHeight());
+
+        g2d.dispose();
+        return result;
     }
 
     /**
@@ -265,18 +363,20 @@ public class RenderedImageExporter {
     private static void maybeDrawScaleBar(Graphics2D g2d,
                                            ImageData<BufferedImage> imageData,
                                            RenderedExportConfig config,
-                                           int w, int h,
-                                           String entryName) {
+                                           int w, int h) {
         if (!config.isShowScaleBar()) return;
         var cal = imageData.getServer().getPixelCalibration();
         if (!cal.hasPixelSizeMicrons()) {
-            logger.warn("Scale bar skipped for {} -- no pixel calibration", entryName);
+            logger.warn("Scale bar skipped -- no pixel calibration");
             return;
         }
         double pxSize = cal.getAveragedPixelSizeMicrons() * config.getDownsample();
         g2d.setComposite(AlphaComposite.getInstance(AlphaComposite.SRC_OVER, 1.0f));
         ScaleBarRenderer.drawScaleBar(g2d, w, h, pxSize,
-                config.getScaleBarPosition(), config.getScaleBarColor());
+                config.getScaleBarPosition(),
+                config.getScaleBarColorAsAwt(),
+                config.getScaleBarFontSize(),
+                config.isScaleBarBoldText());
     }
 
     private static void closeQuietly(AutoCloseable closeable, String context) {

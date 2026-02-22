@@ -1,5 +1,6 @@
 package qupath.ext.quiet.ui;
 
+import java.awt.Desktop;
 import java.io.File;
 import java.util.ResourceBundle;
 
@@ -63,10 +64,14 @@ public class ExportWizard {
     private Button backButton;
     private Button nextButton;
     private Button cancelButton;
+    private Button openFolderButton;
 
     // Current export state
     private ExportCategory selectedCategory;
     private BatchExportTask currentTask;
+
+    /** Tracks the output directory of the last successful export. */
+    private File lastExportDirectory;
 
     private ExportWizard(QuPathGUI qupath) {
         this.qupath = qupath;
@@ -84,8 +89,11 @@ public class ExportWizard {
         stage.setWidth(QuietPreferences.getWizardWidth());
         stage.setHeight(QuietPreferences.getWizardHeight());
 
-        // Save size on close
-        stage.setOnCloseRequest(e -> saveWizardSize());
+        // Save preferences on close
+        stage.setOnCloseRequest(e -> {
+            saveAllPreferences();
+            saveWizardSize();
+        });
 
         buildNavigation();
         initializeSteps();
@@ -113,12 +121,18 @@ public class ExportWizard {
         nextButton.setDefaultButton(true);
         nextButton.setOnAction(e -> goNext());
 
+        openFolderButton = new Button(resources.getString("button.openResultFolder"));
+        openFolderButton.setOnAction(e -> openResultFolder());
+        openFolderButton.setVisible(false);
+        openFolderButton.setManaged(false);
+
         cancelButton = new Button(resources.getString("button.cancel"));
         cancelButton.setCancelButton(true);
         cancelButton.setOnAction(e -> {
             if (currentTask != null && currentTask.isRunning()) {
                 currentTask.cancel();
             } else {
+                saveAllPreferences();
                 saveWizardSize();
                 stage.close();
             }
@@ -127,7 +141,7 @@ public class ExportWizard {
         var spacer = new Region();
         HBox.setHgrow(spacer, Priority.ALWAYS);
 
-        var navBar = new HBox(10, backButton, spacer, cancelButton, nextButton);
+        var navBar = new HBox(10, backButton, spacer, openFolderButton, cancelButton, nextButton);
         navBar.setAlignment(Pos.CENTER_RIGHT);
         navBar.setPadding(new Insets(10, 0, 0, 0));
 
@@ -292,6 +306,7 @@ public class ExportWizard {
 
         currentTask = BatchExportTask.forRendered(
                 imageSelectionPane.getSelectedEntries(), config, classifier, workflowScript, exportGeoJson);
+        lastExportDirectory = outputDir;
         runTask();
     }
 
@@ -304,6 +319,7 @@ public class ExportWizard {
 
         currentTask = BatchExportTask.forMask(
                 imageSelectionPane.getSelectedEntries(), config, workflowScript, exportGeoJson);
+        lastExportDirectory = outputDir;
         runTask();
     }
 
@@ -316,6 +332,7 @@ public class ExportWizard {
 
         currentTask = BatchExportTask.forRaw(
                 imageSelectionPane.getSelectedEntries(), config, workflowScript, exportGeoJson);
+        lastExportDirectory = outputDir;
         runTask();
     }
 
@@ -328,6 +345,7 @@ public class ExportWizard {
 
         currentTask = BatchExportTask.forTiled(
                 imageSelectionPane.getSelectedEntries(), config, workflowScript, exportGeoJson);
+        lastExportDirectory = outputDir;
         runTask();
     }
 
@@ -341,6 +359,13 @@ public class ExportWizard {
         nextButton.setDisable(true);
         backButton.setDisable(true);
 
+        // Reset button labels for the running state
+        cancelButton.setText(resources.getString("button.cancel"));
+
+        // Hide open folder button while export is running
+        openFolderButton.setVisible(false);
+        openFolderButton.setManaged(false);
+
         currentTask.setOnSucceeded(e -> Platform.runLater(() -> onExportComplete(currentTask.getValue())));
         currentTask.setOnFailed(e -> Platform.runLater(() -> onExportFailed(currentTask.getException())));
         currentTask.setOnCancelled(e -> Platform.runLater(this::onExportCancelled));
@@ -352,8 +377,16 @@ public class ExportWizard {
 
     private void onExportComplete(ExportResult result) {
         unbindProgress();
+        showPostExportButtons();
 
         imageSelectionPane.getStatusLabel().setText(result.getSummary());
+
+        // Show open folder button after successful export
+        if (lastExportDirectory != null && result.getSucceeded() > 0) {
+            openFolderButton.setVisible(true);
+            openFolderButton.setManaged(true);
+        }
+
         if (result.hasErrors()) {
             String errorText = String.join("\n", result.getErrors());
             Dialogs.showErrorMessage(
@@ -368,6 +401,7 @@ public class ExportWizard {
 
     private void onExportFailed(Throwable exception) {
         unbindProgress();
+        showPostExportButtons();
         logger.error("Export task failed", exception);
 
         String message = exception != null ? exception.getMessage() : "Unknown error";
@@ -379,7 +413,16 @@ public class ExportWizard {
 
     private void onExportCancelled() {
         unbindProgress();
+        showPostExportButtons();
         imageSelectionPane.getStatusLabel().setText("Export cancelled.");
+    }
+
+    /**
+     * After an export finishes (success, failure, or cancel),
+     * switch "Cancel" to "Close" since there is nothing to cancel.
+     */
+    private void showPostExportButtons() {
+        cancelButton.setText(resources.getString("button.close"));
     }
 
     private void unbindProgress() {
@@ -388,6 +431,34 @@ public class ExportWizard {
         nextButton.setDisable(false);
         backButton.setDisable(false);
         updateNavButtons();
+    }
+
+    /**
+     * Open the result folder in the system file manager.
+     */
+    private void openResultFolder() {
+        if (lastExportDirectory == null || !lastExportDirectory.isDirectory()) return;
+        try {
+            Desktop.getDesktop().open(lastExportDirectory);
+        } catch (Exception e) {
+            logger.warn("Failed to open result folder: {}", e.getMessage());
+        }
+    }
+
+    /**
+     * Save preferences for all config panes.
+     * Called when the wizard is closed (Cancel, X button) to ensure
+     * user settings persist even without running an export.
+     */
+    private void saveAllPreferences() {
+        try {
+            renderedConfigPane.savePreferences();
+            maskConfigPane.savePreferences();
+            rawConfigPane.savePreferences();
+            tiledConfigPane.savePreferences();
+        } catch (Exception e) {
+            logger.warn("Failed to save some preferences on wizard close: {}", e.getMessage());
+        }
     }
 
     private void copyScript() {
