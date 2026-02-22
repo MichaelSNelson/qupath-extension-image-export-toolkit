@@ -15,6 +15,7 @@ import javafx.scene.control.Label;
 import javafx.scene.control.ListView;
 import javafx.scene.control.Spinner;
 import javafx.scene.control.SpinnerValueFactory;
+import javafx.scene.control.Tooltip;
 import javafx.scene.control.cell.CheckBoxListCell;
 import javafx.scene.layout.GridPane;
 import javafx.scene.layout.HBox;
@@ -267,6 +268,30 @@ public class TiledConfigPane extends VBox {
 
         getChildren().addAll(header, tileGrid, labelSection);
         VBox.setVgrow(labelSection, Priority.ALWAYS);
+        wireTooltips();
+    }
+
+    private void wireTooltips() {
+        tileSizeSpinner.setTooltip(createTooltip("tooltip.tiled.tileSize"));
+        overlapSpinner.setTooltip(createTooltip("tooltip.tiled.overlap"));
+        downsampleCombo.setTooltip(createTooltip("tooltip.tiled.downsample"));
+        imageFormatCombo.setTooltip(createTooltip("tooltip.tiled.imageFormat"));
+        parentFilterCombo.setTooltip(createTooltip("tooltip.tiled.parentFilter"));
+        annotatedOnlyCheck.setTooltip(createTooltip("tooltip.tiled.annotatedOnly"));
+        exportJsonCheck.setTooltip(createTooltip("tooltip.tiled.exportJson"));
+        enableLabelsCheck.setTooltip(createTooltip("tooltip.tiled.enableLabels"));
+        labelFormatCombo.setTooltip(createTooltip("tooltip.tiled.labelFormat"));
+        labelMaskTypeCombo.setTooltip(createTooltip("tooltip.tiled.labelMaskType"));
+        labelObjectSourceCombo.setTooltip(createTooltip("tooltip.tiled.labelObjectSource"));
+        labelClassificationList.setTooltip(createTooltip("tooltip.tiled.labelClassifications"));
+    }
+
+    private static Tooltip createTooltip(String key) {
+        var tip = new Tooltip(resources.getString(key));
+        tip.setWrapText(true);
+        tip.setMaxWidth(400);
+        tip.setShowDuration(javafx.util.Duration.seconds(30));
+        return tip;
     }
 
     private void populateClassifications() {

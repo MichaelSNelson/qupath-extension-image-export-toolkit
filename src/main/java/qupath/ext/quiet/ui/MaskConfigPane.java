@@ -14,6 +14,7 @@ import javafx.scene.control.Label;
 import javafx.scene.control.ListView;
 import javafx.scene.control.Spinner;
 import javafx.scene.control.SpinnerValueFactory;
+import javafx.scene.control.Tooltip;
 import javafx.scene.control.cell.CheckBoxListCell;
 import javafx.scene.layout.GridPane;
 import javafx.scene.layout.HBox;
@@ -219,6 +220,7 @@ public class MaskConfigPane extends VBox {
 
         getChildren().addAll(header, grid, classificationsBox);
         VBox.setVgrow(classificationsBox, Priority.ALWAYS);
+        wireTooltips();
     }
 
     private void updateMaskTypeVisibility(MaskExportConfig.MaskType type) {
@@ -233,6 +235,28 @@ public class MaskConfigPane extends VBox {
         boolean showShuffle = (type == MaskExportConfig.MaskType.INSTANCE);
         shuffleInstanceLabelsCheck.setVisible(showShuffle);
         shuffleInstanceLabelsCheck.setManaged(showShuffle);
+    }
+
+    private void wireTooltips() {
+        maskTypeCombo.setTooltip(createTooltip("tooltip.mask.type"));
+        objectSourceCombo.setTooltip(createTooltip("tooltip.mask.objectSource"));
+        backgroundLabelSpinner.setTooltip(createTooltip("tooltip.mask.backgroundLabel"));
+        enableBoundaryCheck.setTooltip(createTooltip("tooltip.mask.enableBoundary"));
+        boundaryLabelSpinner.setTooltip(createTooltip("tooltip.mask.boundaryLabel"));
+        boundaryThicknessSpinner.setTooltip(createTooltip("tooltip.mask.boundaryThickness"));
+        downsampleCombo.setTooltip(createTooltip("tooltip.mask.downsample"));
+        formatCombo.setTooltip(createTooltip("tooltip.mask.format"));
+        grayscaleLutCheck.setTooltip(createTooltip("tooltip.mask.grayscaleLut"));
+        shuffleInstanceLabelsCheck.setTooltip(createTooltip("tooltip.mask.shuffleInstance"));
+        classificationList.setTooltip(createTooltip("tooltip.mask.classifications"));
+    }
+
+    private static Tooltip createTooltip(String key) {
+        var tip = new Tooltip(resources.getString(key));
+        tip.setWrapText(true);
+        tip.setMaxWidth(400);
+        tip.setShowDuration(javafx.util.Duration.seconds(30));
+        return tip;
     }
 
     private void populateClassifications() {

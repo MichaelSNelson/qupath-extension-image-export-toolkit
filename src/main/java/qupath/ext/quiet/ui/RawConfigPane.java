@@ -15,6 +15,7 @@ import javafx.scene.control.Label;
 import javafx.scene.control.ListView;
 import javafx.scene.control.Spinner;
 import javafx.scene.control.SpinnerValueFactory;
+import javafx.scene.control.Tooltip;
 import javafx.scene.control.cell.CheckBoxListCell;
 import javafx.scene.layout.GridPane;
 import javafx.scene.layout.VBox;
@@ -177,6 +178,7 @@ public class RawConfigPane extends VBox {
         regionTypeCombo.valueProperty().addListener((obs, old, newType) -> updateVisibility());
         formatCombo.valueProperty().addListener((obs, old, newFmt) -> updateVisibility());
         updateVisibility();
+        wireTooltips();
     }
 
     private void updateVisibility() {
@@ -201,6 +203,25 @@ public class RawConfigPane extends VBox {
         tileSizeLabel.setManaged(isPyramid);
         tileSizeSpinner.setVisible(isPyramid);
         tileSizeSpinner.setManaged(isPyramid);
+    }
+
+    private void wireTooltips() {
+        regionTypeCombo.setTooltip(createTooltip("tooltip.raw.regionType"));
+        downsampleCombo.setTooltip(createTooltip("tooltip.raw.downsample"));
+        formatCombo.setTooltip(createTooltip("tooltip.raw.format"));
+        paddingSpinner.setTooltip(createTooltip("tooltip.raw.padding"));
+        pyramidLevelsSpinner.setTooltip(createTooltip("tooltip.raw.pyramidLevels"));
+        compressionCombo.setTooltip(createTooltip("tooltip.raw.compression"));
+        tileSizeSpinner.setTooltip(createTooltip("tooltip.raw.tileSize"));
+        channelListView.setTooltip(createTooltip("tooltip.raw.channels"));
+    }
+
+    private static Tooltip createTooltip(String key) {
+        var tip = new Tooltip(resources.getString(key));
+        tip.setWrapText(true);
+        tip.setMaxWidth(400);
+        tip.setShowDuration(javafx.util.Duration.seconds(30));
+        return tip;
     }
 
     /**

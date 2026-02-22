@@ -16,6 +16,7 @@ import javafx.scene.control.Label;
 import javafx.scene.control.ListView;
 import javafx.scene.control.ProgressBar;
 import javafx.scene.control.TextField;
+import javafx.scene.control.Tooltip;
 import javafx.scene.control.cell.CheckBoxListCell;
 import javafx.scene.input.Clipboard;
 import javafx.scene.input.ClipboardContent;
@@ -71,13 +72,16 @@ public class ImageSelectionPane extends VBox {
         var dirLabel = new Label(resources.getString("step3.label.outputDir"));
         outputDirField = new TextField();
         outputDirField.setPromptText("Select output folder...");
+        outputDirField.setTooltip(createTooltip("tooltip.step3.outputDir"));
         HBox.setHgrow(outputDirField, Priority.ALWAYS);
 
         var browseButton = new Button(resources.getString("button.browse"));
         browseButton.setOnAction(e -> browseOutputDirectory());
+        browseButton.setTooltip(createTooltip("tooltip.step3.browse"));
 
         var defaultButton = new Button(resources.getString("button.useProjectDefault"));
         defaultButton.setOnAction(e -> setProjectDefaultDir());
+        defaultButton.setTooltip(createTooltip("tooltip.step3.useProjectDefault"));
 
         var dirBox = new HBox(5, outputDirField, browseButton, defaultButton);
         HBox.setHgrow(outputDirField, Priority.ALWAYS);
@@ -108,19 +112,23 @@ public class ImageSelectionPane extends VBox {
         copyScriptButton.setOnAction(e -> {
             if (scriptCopyHandler != null) scriptCopyHandler.run();
         });
+        copyScriptButton.setTooltip(createTooltip("tooltip.step3.copyScript"));
         var saveScriptButton = new Button(resources.getString("button.saveScript"));
         saveScriptButton.setOnAction(e -> {
             if (scriptSaveHandler != null) scriptSaveHandler.run();
         });
+        saveScriptButton.setTooltip(createTooltip("tooltip.step3.saveScript"));
         var scriptBox = new HBox(10, copyScriptButton, saveScriptButton);
 
         // Workflow checkbox
         addToWorkflowCheck = new CheckBox(resources.getString("step3.label.addToWorkflow"));
         addToWorkflowCheck.setSelected(QuietPreferences.isAddToWorkflow());
+        addToWorkflowCheck.setTooltip(createTooltip("tooltip.step3.addToWorkflow"));
 
         // GeoJSON checkbox
         exportGeoJsonCheck = new CheckBox(resources.getString("step3.label.exportGeoJson"));
         exportGeoJsonCheck.setSelected(QuietPreferences.isExportGeoJson());
+        exportGeoJsonCheck.setTooltip(createTooltip("tooltip.step3.exportGeoJson"));
 
         // Progress
         progressBar = new ProgressBar(0);
@@ -277,6 +285,14 @@ public class ImageSelectionPane extends VBox {
                 statusLabel.setText("Failed to save script: " + e.getMessage());
             }
         }
+    }
+
+    private static Tooltip createTooltip(String key) {
+        var tip = new Tooltip(resources.getString(key));
+        tip.setWrapText(true);
+        tip.setMaxWidth(400);
+        tip.setShowDuration(javafx.util.Duration.seconds(30));
+        return tip;
     }
 
     // Script action handlers - set by ExportWizard

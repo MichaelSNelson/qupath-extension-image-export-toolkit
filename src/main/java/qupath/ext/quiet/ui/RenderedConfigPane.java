@@ -306,6 +306,7 @@ public class RenderedConfigPane extends GridPane {
         // Mode switching
         modeCombo.valueProperty().addListener((obs, oldMode, newMode) -> updateModeVisibility(newMode));
         updateModeVisibility(RenderedExportConfig.RenderMode.CLASSIFIER_OVERLAY);
+        wireTooltips();
     }
 
     private void updateModeVisibility(RenderedExportConfig.RenderMode mode) {
@@ -334,6 +335,31 @@ public class RenderedConfigPane extends GridPane {
         scaleBarColorLabel.setManaged(showScaleBar);
         scaleBarColorCombo.setVisible(showScaleBar);
         scaleBarColorCombo.setManaged(showScaleBar);
+    }
+
+    private void wireTooltips() {
+        modeCombo.setTooltip(createTooltip("tooltip.rendered.mode"));
+        displaySettingsCombo.setTooltip(createTooltip("tooltip.rendered.displaySettings"));
+        presetNameCombo.setTooltip(createTooltip("tooltip.rendered.preset"));
+        classifierCombo.setTooltip(createTooltip("tooltip.rendered.classifier"));
+        opacitySlider.setTooltip(createTooltip("tooltip.rendered.opacity"));
+        downsampleCombo.setTooltip(createTooltip("tooltip.rendered.downsample"));
+        formatCombo.setTooltip(createTooltip("tooltip.rendered.format"));
+        includeAnnotationsCheck.setTooltip(createTooltip("tooltip.rendered.includeAnnotations"));
+        includeDetectionsCheck.setTooltip(createTooltip("tooltip.rendered.includeDetections"));
+        fillAnnotationsCheck.setTooltip(createTooltip("tooltip.rendered.fillAnnotations"));
+        showNamesCheck.setTooltip(createTooltip("tooltip.rendered.showNames"));
+        showScaleBarCheck.setTooltip(createTooltip("tooltip.rendered.showScaleBar"));
+        scaleBarPositionCombo.setTooltip(createTooltip("tooltip.rendered.scaleBarPosition"));
+        scaleBarColorCombo.setTooltip(createTooltip("tooltip.rendered.scaleBarColor"));
+    }
+
+    private static Tooltip createTooltip(String key) {
+        var tip = new Tooltip(resources.getString(key));
+        tip.setWrapText(true);
+        tip.setMaxWidth(400);
+        tip.setShowDuration(javafx.util.Duration.seconds(30));
+        return tip;
     }
 
     private void populateClassifiers() {
