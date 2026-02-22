@@ -1,10 +1,10 @@
-package qupath.ext.quiet.scripting;
+package qupath.ext.quiet.export;
 
 import qupath.ext.quiet.export.OutputFormat;
 import qupath.ext.quiet.export.RawExportConfig;
 
-import static qupath.ext.quiet.scripting.ScriptGenerator.appendLine;
-import static qupath.ext.quiet.scripting.ScriptGenerator.quote;
+import static qupath.ext.quiet.export.ScriptGenerator.appendLine;
+import static qupath.ext.quiet.export.ScriptGenerator.quote;
 
 /**
  * Generates self-contained Groovy scripts for raw pixel data export.

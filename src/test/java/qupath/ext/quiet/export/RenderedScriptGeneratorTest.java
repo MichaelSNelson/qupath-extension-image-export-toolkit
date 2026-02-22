@@ -1,4 +1,4 @@
-package qupath.ext.quiet.scripting;
+package qupath.ext.quiet.export;
 
 import static org.junit.jupiter.api.Assertions.*;
 

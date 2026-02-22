@@ -28,7 +28,7 @@ import qupath.ext.quiet.export.RawExportConfig;
 import qupath.ext.quiet.export.RenderedExportConfig;
 import qupath.ext.quiet.export.TiledExportConfig;
 import qupath.ext.quiet.preferences.QuietPreferences;
-import qupath.ext.quiet.scripting.ScriptGenerator;
+import qupath.ext.quiet.export.ScriptGenerator;
 import qupath.fx.dialogs.Dialogs;
 import qupath.lib.classifiers.pixel.PixelClassifier;
 import qupath.lib.gui.QuPathGUI;

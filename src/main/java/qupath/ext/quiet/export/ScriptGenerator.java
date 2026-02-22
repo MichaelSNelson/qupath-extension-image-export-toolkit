@@ -1,4 +1,4 @@
-package qupath.ext.quiet.scripting;
+package qupath.ext.quiet.export;
 
 import qupath.ext.quiet.export.ExportCategory;
 import qupath.ext.quiet.export.MaskExportConfig;

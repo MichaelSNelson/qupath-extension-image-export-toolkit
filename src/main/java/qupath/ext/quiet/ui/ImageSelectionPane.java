@@ -47,6 +47,7 @@ public class ImageSelectionPane extends VBox {
     private final QuPathGUI qupath;
     private final Stage ownerStage;
 
+    private ExportCategory currentCategory;
     private TextField outputDirField;
     private ListView<ImageEntryItem> imageListView;
     private Label imageCountLabel;
@@ -204,23 +205,25 @@ public class ImageSelectionPane extends VBox {
         if (project == null) return;
 
         var projectDir = project.getPath().getParent();
-        if (projectDir != null) {
-            // Will be combined with category subdirectory by the wizard
-            outputDirField.setText(projectDir.toFile().getAbsolutePath());
+        if (projectDir != null && currentCategory != null) {
+            File outputDir = currentCategory.getNextAvailableOutputDir(projectDir.toFile());
+            outputDirField.setText(outputDir.getAbsolutePath());
         }
     }
 
     /**
-     * Set the output directory field to the category-specific default.
+     * Set the output directory field to the next available category-specific
+     * directory, avoiding overwrites of previous exports.
      */
     public void setDefaultOutputDir(ExportCategory category) {
+        this.currentCategory = category;
         var project = qupath.getProject();
         if (project == null) return;
 
         var projectDir = project.getPath().getParent();
         if (projectDir != null) {
-            File defaultDir = category.getDefaultOutputDir(projectDir.toFile());
-            outputDirField.setText(defaultDir.getAbsolutePath());
+            File outputDir = category.getNextAvailableOutputDir(projectDir.toFile());
+            outputDirField.setText(outputDir.getAbsolutePath());
         }
     }
 

@@ -38,6 +38,39 @@ public enum ExportCategory {
         return new File(new File(projectDir, "exports"), defaultSubdirectory);
     }
 
+    /**
+     * Returns the next available output directory for this category.
+     * <p>
+     * If the default directory already contains files from a previous export,
+     * appends a numeric suffix ({@code _2}, {@code _3}, ...) to prevent
+     * silent overwrites.
+     *
+     * @param projectDir the project root directory
+     * @return a directory that does not yet contain exported files
+     */
+    public File getNextAvailableOutputDir(File projectDir) {
+        File baseDir = getDefaultOutputDir(projectDir);
+        if (!hasContent(baseDir)) {
+            return baseDir;
+        }
+        File exportsDir = new File(projectDir, "exports");
+        for (int i = 2; i < 1000; i++) {
+            File candidate = new File(exportsDir, defaultSubdirectory + "_" + i);
+            if (!hasContent(candidate)) {
+                return candidate;
+            }
+        }
+        // Fallback: timestamp
+        return new File(exportsDir,
+                defaultSubdirectory + "_" + System.currentTimeMillis());
+    }
+
+    private static boolean hasContent(File dir) {
+        if (!dir.isDirectory()) return false;
+        String[] files = dir.list();
+        return files != null && files.length > 0;
+    }
+
     @Override
     public String toString() {
         return displayName;

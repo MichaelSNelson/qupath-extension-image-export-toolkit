@@ -1,11 +1,11 @@
-package qupath.ext.quiet.scripting;
+package qupath.ext.quiet.export;
 
 import com.google.gson.Gson;
 import qupath.ext.quiet.export.RenderedExportConfig;
 import qupath.ext.quiet.export.RenderedExportConfig.DisplaySettingsMode;
 
-import static qupath.ext.quiet.scripting.ScriptGenerator.appendLine;
-import static qupath.ext.quiet.scripting.ScriptGenerator.quote;
+import static qupath.ext.quiet.export.ScriptGenerator.appendLine;
+import static qupath.ext.quiet.export.ScriptGenerator.quote;
 
 /**
  * Generates self-contained Groovy scripts for rendered image export.
