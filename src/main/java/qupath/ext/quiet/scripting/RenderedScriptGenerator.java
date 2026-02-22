@@ -86,6 +86,93 @@ class RenderedScriptGenerator {
         appendLine(sb, "");
     }
 
+    // ------------------------------------------------------------------
+    // Scale bar helpers
+    // ------------------------------------------------------------------
+
+    /**
+     * Emit scale bar imports (only when scale bar is enabled).
+     */
+    private static void emitScaleBarImports(StringBuilder sb) {
+        appendLine(sb, "import java.awt.Color");
+        appendLine(sb, "import java.awt.Font");
+        appendLine(sb, "import java.awt.FontMetrics");
+    }
+
+    /**
+     * Emit scale bar configuration variables.
+     */
+    private static void emitScaleBarConfig(StringBuilder sb, RenderedExportConfig config) {
+        appendLine(sb, "def showScaleBar = " + config.isShowScaleBar());
+        appendLine(sb, "def scaleBarPosition = " + quote(config.getScaleBarPosition().name()));
+        appendLine(sb, "def scaleBarColor = " + quote(config.getScaleBarColor().name()));
+    }
+
+    /**
+     * Emit a self-contained drawScaleBar Groovy function.
+     */
+    private static void emitScaleBarFunction(StringBuilder sb) {
+        appendLine(sb, "// Scale bar drawing function");
+        appendLine(sb, "def drawScaleBar(Graphics2D g2d, int imgW, int imgH, double pxSize, String pos, String barCol) {");
+        appendLine(sb, "    if (pxSize <= 0) return");
+        appendLine(sb, "    def niceLengths = [0.1, 0.25, 0.5, 1, 2, 5, 10, 20, 50, 100, 200, 250, 500, 1000, 2000, 5000, 10000, 20000, 50000]");
+        appendLine(sb, "    double target = imgW * pxSize * 0.15");
+        appendLine(sb, "    double barUm = niceLengths.min { Math.abs(it - target) }");
+        appendLine(sb, "    int barPx = (int) Math.round(barUm / pxSize)");
+        appendLine(sb, "    if (barPx < 2) return");
+        appendLine(sb, "    int barH = Math.max(4, imgH / 150)");
+        appendLine(sb, "    int minDim = Math.min(imgW, imgH)");
+        appendLine(sb, "    int fontSize = Math.max(12, minDim / 50)");
+        appendLine(sb, "    int margin = Math.max(10, minDim / 40)");
+        appendLine(sb, "    String label = barUm >= 1000 ? String.format('%d mm', (int)(barUm / 1000)) : (barUm == Math.floor(barUm) ? String.format('%d um', (int)barUm) : String.format('%.1f um', barUm))");
+        appendLine(sb, "    g2d.setFont(new Font(Font.SANS_SERIF, Font.BOLD, fontSize))");
+        appendLine(sb, "    def fm = g2d.getFontMetrics()");
+        appendLine(sb, "    int tw = fm.stringWidth(label)");
+        appendLine(sb, "    int th = fm.getAscent()");
+        appendLine(sb, "    int bx, by");
+        appendLine(sb, "    switch (pos) {");
+        appendLine(sb, "        case 'LOWER_LEFT': bx = margin; by = imgH - margin - barH; break");
+        appendLine(sb, "        case 'UPPER_RIGHT': bx = imgW - margin - barPx; by = margin + th + 4; break");
+        appendLine(sb, "        case 'UPPER_LEFT': bx = margin; by = margin + th + 4; break");
+        appendLine(sb, "        default: bx = imgW - margin - barPx; by = imgH - margin - barH; break");
+        appendLine(sb, "    }");
+        appendLine(sb, "    int tx = bx + (barPx - tw) / 2");
+        appendLine(sb, "    int ty = by - 4");
+        appendLine(sb, "    def primary = barCol == 'BLACK' ? Color.BLACK : Color.WHITE");
+        appendLine(sb, "    def outline = barCol == 'BLACK' ? Color.WHITE : Color.BLACK");
+        appendLine(sb, "    g2d.setColor(outline)");
+        appendLine(sb, "    g2d.fillRect(bx - 1, by - 1, barPx + 2, barH + 2)");
+        appendLine(sb, "    g2d.setColor(primary)");
+        appendLine(sb, "    g2d.fillRect(bx, by, barPx, barH)");
+        appendLine(sb, "    for (int dx = -1; dx <= 1; dx++) {");
+        appendLine(sb, "        for (int dy = -1; dy <= 1; dy++) {");
+        appendLine(sb, "            if (dx != 0 || dy != 0) { g2d.setColor(outline); g2d.drawString(label, tx + dx, ty + dy) }");
+        appendLine(sb, "        }");
+        appendLine(sb, "    }");
+        appendLine(sb, "    g2d.setColor(primary)");
+        appendLine(sb, "    g2d.drawString(label, tx, ty)");
+        appendLine(sb, "}");
+        appendLine(sb, "");
+    }
+
+    /**
+     * Emit per-image scale bar drawing code (after overlay painting, before g2d.dispose).
+     * Expects variables: baseServer, imageData, g2d, downsample, showScaleBar, scaleBarPosition, scaleBarColor
+     * and outW, outH (output image dimensions).
+     */
+    private static void emitScaleBarDrawing(StringBuilder sb) {
+        appendLine(sb, "        if (showScaleBar) {");
+        appendLine(sb, "            def cal = imageData.getServer().getPixelCalibration()");
+        appendLine(sb, "            if (cal.hasPixelSizeMicrons()) {");
+        appendLine(sb, "                double pxSize = cal.getAveragedPixelSizeMicrons() * downsample");
+        appendLine(sb, "                g2d.setComposite(java.awt.AlphaComposite.getInstance(java.awt.AlphaComposite.SRC_OVER, 1.0f))");
+        appendLine(sb, "                drawScaleBar(g2d, outW, outH, pxSize, scaleBarPosition, scaleBarColor)");
+        appendLine(sb, "            } else {");
+        appendLine(sb, "                println \"  WARNING: Scale bar skipped -- no pixel calibration\"");
+        appendLine(sb, "            }");
+        appendLine(sb, "        }");
+    }
+
     /**
      * Emit per-image display server wrapping code (inside the try block, after baseServer).
      * Sets up readServer variable that should be used instead of baseServer for image reads.
@@ -133,6 +220,9 @@ class RenderedScriptGenerator {
         appendLine(sb, "import java.awt.RenderingHints");
         appendLine(sb, "import java.awt.image.BufferedImage");
         emitDisplayImports(sb, displayMode);
+        if (config.isShowScaleBar()) {
+            emitScaleBarImports(sb);
+        }
         appendLine(sb, "");
 
         // Configuration parameters
@@ -147,6 +237,7 @@ class RenderedScriptGenerator {
         appendLine(sb, "def includeDetections = " + config.isIncludeDetections());
         appendLine(sb, "def fillAnnotations = " + config.isFillAnnotations());
         appendLine(sb, "def showNames = " + config.isShowNames());
+        emitScaleBarConfig(sb, config);
         appendLine(sb, "// =======================================================");
         appendLine(sb, "");
 
@@ -171,6 +262,11 @@ class RenderedScriptGenerator {
         appendLine(sb, "def outDir = new File(outputDir)");
         appendLine(sb, "outDir.mkdirs()");
         appendLine(sb, "");
+
+        // Scale bar function (before the main loop)
+        if (config.isShowScaleBar()) {
+            emitScaleBarFunction(sb);
+        }
 
         // Main processing loop
         appendLine(sb, "def entries = project.getImageList()");
@@ -251,6 +347,13 @@ class RenderedScriptGenerator {
         appendLine(sb, "            gCopy.dispose()");
         appendLine(sb, "        }");
         appendLine(sb, "");
+
+        // Scale bar drawing
+        if (config.isShowScaleBar()) {
+            emitScaleBarDrawing(sb);
+            appendLine(sb, "");
+        }
+
         appendLine(sb, "        g2d.dispose()");
         appendLine(sb, "");
         appendLine(sb, "        def sanitized = entryName.replaceAll('[^a-zA-Z0-9._\\\\-]', '_')");
@@ -303,6 +406,9 @@ class RenderedScriptGenerator {
         appendLine(sb, "import java.awt.RenderingHints");
         appendLine(sb, "import java.awt.image.BufferedImage");
         emitDisplayImports(sb, displayMode);
+        if (config.isShowScaleBar()) {
+            emitScaleBarImports(sb);
+        }
         appendLine(sb, "");
 
         // Configuration parameters
@@ -316,6 +422,7 @@ class RenderedScriptGenerator {
         appendLine(sb, "def includeDetections = " + config.isIncludeDetections());
         appendLine(sb, "def fillAnnotations = " + config.isFillAnnotations());
         appendLine(sb, "def showNames = " + config.isShowNames());
+        emitScaleBarConfig(sb, config);
         appendLine(sb, "// =======================================================");
         appendLine(sb, "");
 
@@ -334,6 +441,11 @@ class RenderedScriptGenerator {
         appendLine(sb, "def outDir = new File(outputDir)");
         appendLine(sb, "outDir.mkdirs()");
         appendLine(sb, "");
+
+        // Scale bar function (before the main loop)
+        if (config.isShowScaleBar()) {
+            emitScaleBarFunction(sb);
+        }
 
         // Main processing loop
         appendLine(sb, "def entries = project.getImageList()");
@@ -391,6 +503,13 @@ class RenderedScriptGenerator {
         appendLine(sb, "            gCopy.dispose()");
         appendLine(sb, "        }");
         appendLine(sb, "");
+
+        // Scale bar drawing
+        if (config.isShowScaleBar()) {
+            emitScaleBarDrawing(sb);
+            appendLine(sb, "");
+        }
+
         appendLine(sb, "        g2d.dispose()");
         appendLine(sb, "");
         appendLine(sb, "        def sanitized = entryName.replaceAll('[^a-zA-Z0-9._\\\\-]', '_')");

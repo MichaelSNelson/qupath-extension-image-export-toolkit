@@ -26,6 +26,7 @@ import javafx.util.StringConverter;
 import qupath.ext.quiet.export.OutputFormat;
 import qupath.ext.quiet.export.RenderedExportConfig;
 import qupath.ext.quiet.export.RenderedExportConfig.DisplaySettingsMode;
+import qupath.ext.quiet.export.ScaleBarRenderer;
 import qupath.ext.quiet.preferences.QuietPreferences;
 import qupath.lib.display.settings.DisplaySettingUtils;
 import qupath.lib.display.settings.ImageDisplaySettings;
@@ -54,12 +55,17 @@ public class RenderedConfigPane extends GridPane {
     private CheckBox includeDetectionsCheck;
     private CheckBox fillAnnotationsCheck;
     private CheckBox showNamesCheck;
+    private CheckBox showScaleBarCheck;
+    private ComboBox<ScaleBarRenderer.Position> scaleBarPositionCombo;
+    private ComboBox<ScaleBarRenderer.BarColor> scaleBarColorCombo;
 
     // Controls needing visibility toggling
     private Label classifierLabel;
     private HBox classifierBox;
     private Label presetLabel;
     private HBox presetBox;
+    private Label scaleBarPositionLabel;
+    private Label scaleBarColorLabel;
 
     public RenderedConfigPane(QuPathGUI qupath) {
         this.qupath = qupath;
@@ -240,6 +246,62 @@ public class RenderedConfigPane extends GridPane {
 
         showNamesCheck = new CheckBox(resources.getString("rendered.label.showNames"));
         add(showNamesCheck, 1, row);
+        row++;
+
+        // Scale bar options
+        showScaleBarCheck = new CheckBox(resources.getString("rendered.label.showScaleBar"));
+        add(showScaleBarCheck, 1, row);
+        row++;
+
+        scaleBarPositionLabel = new Label(resources.getString("rendered.label.scaleBarPosition"));
+        add(scaleBarPositionLabel, 0, row);
+        scaleBarPositionCombo = new ComboBox<>(FXCollections.observableArrayList(
+                ScaleBarRenderer.Position.values()));
+        scaleBarPositionCombo.setValue(ScaleBarRenderer.Position.LOWER_RIGHT);
+        scaleBarPositionCombo.setConverter(new StringConverter<>() {
+            @Override
+            public String toString(ScaleBarRenderer.Position pos) {
+                if (pos == null) return "";
+                return switch (pos) {
+                    case LOWER_RIGHT -> resources.getString("rendered.scaleBar.lowerRight");
+                    case LOWER_LEFT -> resources.getString("rendered.scaleBar.lowerLeft");
+                    case UPPER_RIGHT -> resources.getString("rendered.scaleBar.upperRight");
+                    case UPPER_LEFT -> resources.getString("rendered.scaleBar.upperLeft");
+                };
+            }
+            @Override
+            public ScaleBarRenderer.Position fromString(String s) {
+                return ScaleBarRenderer.Position.LOWER_RIGHT;
+            }
+        });
+        add(scaleBarPositionCombo, 1, row);
+        row++;
+
+        scaleBarColorLabel = new Label(resources.getString("rendered.label.scaleBarColor"));
+        add(scaleBarColorLabel, 0, row);
+        scaleBarColorCombo = new ComboBox<>(FXCollections.observableArrayList(
+                ScaleBarRenderer.BarColor.values()));
+        scaleBarColorCombo.setValue(ScaleBarRenderer.BarColor.WHITE);
+        scaleBarColorCombo.setConverter(new StringConverter<>() {
+            @Override
+            public String toString(ScaleBarRenderer.BarColor color) {
+                if (color == null) return "";
+                return switch (color) {
+                    case WHITE -> resources.getString("rendered.scaleBar.white");
+                    case BLACK -> resources.getString("rendered.scaleBar.black");
+                };
+            }
+            @Override
+            public ScaleBarRenderer.BarColor fromString(String s) {
+                return ScaleBarRenderer.BarColor.WHITE;
+            }
+        });
+        add(scaleBarColorCombo, 1, row);
+
+        // Scale bar visibility toggling
+        showScaleBarCheck.selectedProperty().addListener(
+                (obs, oldVal, newVal) -> updateScaleBarVisibility(newVal));
+        updateScaleBarVisibility(false);
 
         // Mode switching
         modeCombo.valueProperty().addListener((obs, oldMode, newMode) -> updateModeVisibility(newMode));
@@ -261,6 +323,17 @@ public class RenderedConfigPane extends GridPane {
         presetLabel.setManaged(isPreset);
         presetBox.setVisible(isPreset);
         presetBox.setManaged(isPreset);
+    }
+
+    private void updateScaleBarVisibility(boolean showScaleBar) {
+        scaleBarPositionLabel.setVisible(showScaleBar);
+        scaleBarPositionLabel.setManaged(showScaleBar);
+        scaleBarPositionCombo.setVisible(showScaleBar);
+        scaleBarPositionCombo.setManaged(showScaleBar);
+        scaleBarColorLabel.setVisible(showScaleBar);
+        scaleBarColorLabel.setManaged(showScaleBar);
+        scaleBarColorCombo.setVisible(showScaleBar);
+        scaleBarColorCombo.setManaged(showScaleBar);
     }
 
     private void populateClassifiers() {
@@ -330,6 +403,17 @@ public class RenderedConfigPane extends GridPane {
         includeDetectionsCheck.setSelected(QuietPreferences.isRenderedIncludeDetections());
         fillAnnotationsCheck.setSelected(QuietPreferences.isRenderedFillAnnotations());
         showNamesCheck.setSelected(QuietPreferences.isRenderedShowNames());
+
+        showScaleBarCheck.setSelected(QuietPreferences.isRenderedShowScaleBar());
+        try {
+            scaleBarPositionCombo.setValue(
+                    ScaleBarRenderer.Position.valueOf(QuietPreferences.getRenderedScaleBarPosition()));
+        } catch (IllegalArgumentException e) { /* keep default */ }
+        try {
+            scaleBarColorCombo.setValue(
+                    ScaleBarRenderer.BarColor.valueOf(QuietPreferences.getRenderedScaleBarColor()));
+        } catch (IllegalArgumentException e) { /* keep default */ }
+        updateScaleBarVisibility(showScaleBarCheck.isSelected());
     }
 
     /**
@@ -353,6 +437,11 @@ public class RenderedConfigPane extends GridPane {
         QuietPreferences.setRenderedIncludeDetections(includeDetectionsCheck.isSelected());
         QuietPreferences.setRenderedFillAnnotations(fillAnnotationsCheck.isSelected());
         QuietPreferences.setRenderedShowNames(showNamesCheck.isSelected());
+        QuietPreferences.setRenderedShowScaleBar(showScaleBarCheck.isSelected());
+        var sbPos = scaleBarPositionCombo.getValue();
+        if (sbPos != null) QuietPreferences.setRenderedScaleBarPosition(sbPos.name());
+        var sbColor = scaleBarColorCombo.getValue();
+        if (sbColor != null) QuietPreferences.setRenderedScaleBarColor(sbColor.name());
     }
 
     /**
@@ -376,7 +465,14 @@ public class RenderedConfigPane extends GridPane {
                 .includeAnnotations(includeAnnotationsCheck.isSelected())
                 .includeDetections(includeDetectionsCheck.isSelected())
                 .fillAnnotations(fillAnnotationsCheck.isSelected())
-                .showNames(showNamesCheck.isSelected());
+                .showNames(showNamesCheck.isSelected())
+                .showScaleBar(showScaleBarCheck.isSelected())
+                .scaleBarPosition(scaleBarPositionCombo.getValue() != null
+                        ? scaleBarPositionCombo.getValue()
+                        : ScaleBarRenderer.Position.LOWER_RIGHT)
+                .scaleBarColor(scaleBarColorCombo.getValue() != null
+                        ? scaleBarColorCombo.getValue()
+                        : ScaleBarRenderer.BarColor.WHITE);
 
         if (modeCombo.getValue() == RenderedExportConfig.RenderMode.CLASSIFIER_OVERLAY) {
             builder.classifierName(classifierCombo.getValue());

@@ -68,6 +68,15 @@ public class QuietPreferences {
     private static final StringProperty renderedDisplayPresetName =
             PathPrefs.createPersistentPreference(PREFIX + "rendered.displayPresetName", "");
 
+    private static final BooleanProperty renderedShowScaleBar =
+            PathPrefs.createPersistentPreference(PREFIX + "rendered.showScaleBar", false);
+
+    private static final StringProperty renderedScaleBarPosition =
+            PathPrefs.createPersistentPreference(PREFIX + "rendered.scaleBarPosition", "LOWER_RIGHT");
+
+    private static final StringProperty renderedScaleBarColor =
+            PathPrefs.createPersistentPreference(PREFIX + "rendered.scaleBarColor", "WHITE");
+
     // --- Mask export preferences ---
 
     private static final StringProperty maskType =
@@ -220,6 +229,18 @@ public class QuietPreferences {
     public static StringProperty renderedDisplayPresetNameProperty() { return renderedDisplayPresetName; }
     public static String getRenderedDisplayPresetName() { return renderedDisplayPresetName.get(); }
     public static void setRenderedDisplayPresetName(String value) { renderedDisplayPresetName.set(value != null ? value : ""); }
+
+    public static BooleanProperty renderedShowScaleBarProperty() { return renderedShowScaleBar; }
+    public static boolean isRenderedShowScaleBar() { return renderedShowScaleBar.get(); }
+    public static void setRenderedShowScaleBar(boolean value) { renderedShowScaleBar.set(value); }
+
+    public static StringProperty renderedScaleBarPositionProperty() { return renderedScaleBarPosition; }
+    public static String getRenderedScaleBarPosition() { return renderedScaleBarPosition.get(); }
+    public static void setRenderedScaleBarPosition(String value) { renderedScaleBarPosition.set(value != null ? value : "LOWER_RIGHT"); }
+
+    public static StringProperty renderedScaleBarColorProperty() { return renderedScaleBarColor; }
+    public static String getRenderedScaleBarColor() { return renderedScaleBarColor.get(); }
+    public static void setRenderedScaleBarColor(String value) { renderedScaleBarColor.set(value != null ? value : "WHITE"); }
 
     // ==================== Mask ====================
 

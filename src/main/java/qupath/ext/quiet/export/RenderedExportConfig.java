@@ -52,6 +52,9 @@ public class RenderedExportConfig {
     private final boolean fillAnnotations;
     private final boolean showNames;
     private final boolean addToWorkflow;
+    private final boolean showScaleBar;
+    private final ScaleBarRenderer.Position scaleBarPosition;
+    private final ScaleBarRenderer.BarColor scaleBarColor;
 
     private RenderedExportConfig(Builder builder) {
         this.renderMode = builder.renderMode;
@@ -68,6 +71,9 @@ public class RenderedExportConfig {
         this.fillAnnotations = builder.fillAnnotations;
         this.showNames = builder.showNames;
         this.addToWorkflow = builder.addToWorkflow;
+        this.showScaleBar = builder.showScaleBar;
+        this.scaleBarPosition = builder.scaleBarPosition;
+        this.scaleBarColor = builder.scaleBarColor;
     }
 
     public RenderMode getRenderMode() {
@@ -134,6 +140,18 @@ public class RenderedExportConfig {
         return addToWorkflow;
     }
 
+    public boolean isShowScaleBar() {
+        return showScaleBar;
+    }
+
+    public ScaleBarRenderer.Position getScaleBarPosition() {
+        return scaleBarPosition;
+    }
+
+    public ScaleBarRenderer.BarColor getScaleBarColor() {
+        return scaleBarColor;
+    }
+
     /**
      * Generates a sanitized output filename for a given image entry name.
      *
@@ -167,6 +185,9 @@ public class RenderedExportConfig {
         private boolean fillAnnotations = false;
         private boolean showNames = false;
         private boolean addToWorkflow = true;
+        private boolean showScaleBar = false;
+        private ScaleBarRenderer.Position scaleBarPosition = ScaleBarRenderer.Position.LOWER_RIGHT;
+        private ScaleBarRenderer.BarColor scaleBarColor = ScaleBarRenderer.BarColor.WHITE;
 
         public Builder renderMode(RenderMode mode) {
             this.renderMode = mode;
@@ -235,6 +256,21 @@ public class RenderedExportConfig {
 
         public Builder addToWorkflow(boolean add) {
             this.addToWorkflow = add;
+            return this;
+        }
+
+        public Builder showScaleBar(boolean show) {
+            this.showScaleBar = show;
+            return this;
+        }
+
+        public Builder scaleBarPosition(ScaleBarRenderer.Position position) {
+            this.scaleBarPosition = position;
+            return this;
+        }
+
+        public Builder scaleBarColor(ScaleBarRenderer.BarColor color) {
+            this.scaleBarColor = color;
             return this;
         }
 

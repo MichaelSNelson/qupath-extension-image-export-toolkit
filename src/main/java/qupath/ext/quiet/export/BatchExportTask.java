@@ -3,7 +3,9 @@ package qupath.ext.quiet.export;
 import java.awt.image.BufferedImage;
 import java.io.File;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -11,6 +13,8 @@ import org.slf4j.LoggerFactory;
 import javafx.concurrent.Task;
 import qupath.lib.classifiers.pixel.PixelClassifier;
 import qupath.lib.images.ImageData;
+import qupath.lib.images.servers.ImageServer;
+import qupath.lib.images.servers.PixelCalibration;
 import qupath.lib.plugins.workflow.DefaultScriptableWorkflowStep;
 import qupath.lib.projects.ProjectImageEntry;
 
@@ -115,6 +119,10 @@ public class BatchExportTask extends Task<ExportResult> {
         int skipped = 0;
         List<String> errors = new ArrayList<>();
 
+        // Metadata tracking
+        Map<String, ExportMetadataWriter.ChannelGroup> channelGroups = new LinkedHashMap<>();
+        PixelCalibration firstCalibration = null;
+
         for (int i = 0; i < total; i++) {
             if (isCancelled()) {
                 logger.info("Export cancelled by user after {} of {} images", i, total);
@@ -148,6 +156,12 @@ public class BatchExportTask extends Task<ExportResult> {
                 }
                 succeeded++;
 
+                // Track channel info for metadata sidecar
+                trackChannelGroup(channelGroups, imageData, entryName);
+                if (firstCalibration == null) {
+                    firstCalibration = imageData.getServer().getPixelCalibration();
+                }
+
                 // Add workflow step if configured
                 if (shouldAddWorkflow() && workflowScript != null) {
                     addWorkflowStep(imageData, entry);
@@ -175,6 +189,11 @@ public class BatchExportTask extends Task<ExportResult> {
             }
         }
 
+        // Write metadata sidecar file
+        if (succeeded > 0) {
+            writeMetadataSidecar(channelGroups, firstCalibration);
+        }
+
         updateProgress(total, total);
         updateMessage("Export complete");
 
@@ -192,6 +211,86 @@ public class BatchExportTask extends Task<ExportResult> {
             }
             RenderedImageExporter.exportWithClassifier(
                     imageData, classifier, renderedConfig, entryName);
+        }
+    }
+
+    /**
+     * Compute a signature string for an image's channel configuration.
+     */
+    private static String channelSignature(ImageServer<?> server) {
+        var channels = server.getMetadata().getChannels();
+        var sb = new StringBuilder();
+        for (var ch : channels) {
+            sb.append(ch.getName()).append('|')
+              .append(Integer.toHexString(ch.getColor())).append(',');
+        }
+        return sb.toString();
+    }
+
+    /**
+     * Track channel group information for the metadata sidecar.
+     */
+    private void trackChannelGroup(Map<String, ExportMetadataWriter.ChannelGroup> groups,
+                                    ImageData<BufferedImage> imageData,
+                                    String entryName) {
+        try {
+            var server = imageData.getServer();
+            String sig = channelSignature(server);
+            var group = groups.get(sig);
+            if (group == null) {
+                var channels = List.copyOf(server.getMetadata().getChannels());
+                var stains = imageData.getColorDeconvolutionStains();
+                var cal = server.getPixelCalibration();
+                var filenames = new ArrayList<String>();
+                // Compute the exported filename using the appropriate config
+                String exportedName = switch (category) {
+                    case RENDERED -> renderedConfig.buildOutputFilename(entryName);
+                    case MASK -> maskConfig.buildOutputFilename(entryName);
+                    case RAW -> rawConfig.buildOutputFilename(entryName);
+                    case TILED -> tiledConfig.buildOutputFilename(entryName);
+                };
+                filenames.add(exportedName);
+                groups.put(sig, new ExportMetadataWriter.ChannelGroup(
+                        channels, imageData.getImageType(), stains, cal, filenames));
+            } else {
+                String exportedName = switch (category) {
+                    case RENDERED -> renderedConfig.buildOutputFilename(entryName);
+                    case MASK -> maskConfig.buildOutputFilename(entryName);
+                    case RAW -> rawConfig.buildOutputFilename(entryName);
+                    case TILED -> tiledConfig.buildOutputFilename(entryName);
+                };
+                group.filenames().add(exportedName);
+            }
+        } catch (Exception e) {
+            logger.debug("Failed to track channel group for {}: {}", entryName, e.getMessage());
+        }
+    }
+
+    /**
+     * Write the metadata sidecar file appropriate for the export category.
+     */
+    private void writeMetadataSidecar(Map<String, ExportMetadataWriter.ChannelGroup> channelGroups,
+                                       PixelCalibration firstCalibration) {
+        try {
+            switch (category) {
+                case MASK -> ExportMetadataWriter.writeMaskLegend(
+                        maskConfig, firstCalibration,
+                        maskConfig.getDownsample(), outputDirectory);
+                case RENDERED -> ExportMetadataWriter.writeExportInfo(
+                        List.copyOf(channelGroups.values()),
+                        renderedConfig.getDownsample(), category,
+                        renderedConfig, null, outputDirectory);
+                case RAW -> ExportMetadataWriter.writeExportInfo(
+                        List.copyOf(channelGroups.values()),
+                        rawConfig.getDownsample(), category,
+                        null, null, outputDirectory);
+                case TILED -> ExportMetadataWriter.writeExportInfo(
+                        List.copyOf(channelGroups.values()),
+                        tiledConfig.getDownsample(), category,
+                        null, tiledConfig, outputDirectory);
+            }
+        } catch (Exception e) {
+            logger.warn("Failed to write metadata sidecar file: {}", e.getMessage());
         }
     }
 

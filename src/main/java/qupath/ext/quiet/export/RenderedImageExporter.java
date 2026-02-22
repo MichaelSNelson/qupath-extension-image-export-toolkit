@@ -118,6 +118,9 @@ public class RenderedImageExporter {
                         config.isFillAnnotations(), config.isShowNames());
             }
 
+            maybeDrawScaleBar(g2d, imageData, config,
+                    baseImage.getWidth(), baseImage.getHeight(), entryName);
+
             g2d.dispose();
             baseImage = null;
             classImage = null;
@@ -190,6 +193,9 @@ public class RenderedImageExporter {
                         config.isFillAnnotations(), config.isShowNames());
             }
 
+            maybeDrawScaleBar(g2d, imageData, config,
+                    baseImage.getWidth(), baseImage.getHeight(), entryName);
+
             g2d.dispose();
             baseImage = null;
 
@@ -236,6 +242,26 @@ public class RenderedImageExporter {
 
         return ChannelDisplayTransformServer.createColorTransformServer(
                 baseServer, display.selectedChannels());
+    }
+
+    /**
+     * Draw a scale bar if enabled and the image has pixel calibration.
+     */
+    private static void maybeDrawScaleBar(Graphics2D g2d,
+                                           ImageData<BufferedImage> imageData,
+                                           RenderedExportConfig config,
+                                           int w, int h,
+                                           String entryName) {
+        if (!config.isShowScaleBar()) return;
+        var cal = imageData.getServer().getPixelCalibration();
+        if (!cal.hasPixelSizeMicrons()) {
+            logger.warn("Scale bar skipped for {} -- no pixel calibration", entryName);
+            return;
+        }
+        double pxSize = cal.getAveragedPixelSizeMicrons() * config.getDownsample();
+        g2d.setComposite(AlphaComposite.getInstance(AlphaComposite.SRC_OVER, 1.0f));
+        ScaleBarRenderer.drawScaleBar(g2d, w, h, pxSize,
+                config.getScaleBarPosition(), config.getScaleBarColor());
     }
 
     private static void closeQuietly(AutoCloseable closeable, String context) {
