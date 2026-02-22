@@ -216,6 +216,7 @@ public class RenderedImageExporter {
      * Resolve display settings and wrap the base server if needed.
      *
      * @return a wrapped server applying display settings, or null for RAW mode
+     *         or if display settings cannot be applied
      */
     private static ImageServer<BufferedImage> resolveDisplayServer(
             ImageData<BufferedImage> imageData,
@@ -227,21 +228,35 @@ public class RenderedImageExporter {
             return null;
         }
 
-        var display = ImageDisplay.create(imageData);
+        try {
+            var display = ImageDisplay.create(imageData);
 
-        if (mode == RenderedExportConfig.DisplaySettingsMode.CURRENT_VIEWER
-                || mode == RenderedExportConfig.DisplaySettingsMode.SAVED_PRESET) {
-            var settings = config.getCapturedDisplaySettings();
-            if (settings != null) {
-                DisplaySettingUtils.applySettingsToDisplay(display, settings);
-            } else {
-                logger.warn("No display settings available for mode {}; using per-image defaults", mode);
+            if (mode == RenderedExportConfig.DisplaySettingsMode.CURRENT_VIEWER
+                    || mode == RenderedExportConfig.DisplaySettingsMode.SAVED_PRESET) {
+                var settings = config.getCapturedDisplaySettings();
+                if (settings != null) {
+                    DisplaySettingUtils.applySettingsToDisplay(display, settings);
+                } else {
+                    logger.warn("No display settings available for mode {}; "
+                            + "using per-image defaults", mode);
+                }
             }
-        }
-        // PER_IMAGE_SAVED: display already loaded from imageData properties
+            // PER_IMAGE_SAVED: display already loaded from imageData properties
 
-        return ChannelDisplayTransformServer.createColorTransformServer(
-                baseServer, display.selectedChannels());
+            var channels = display.selectedChannels();
+            if (channels == null || channels.isEmpty()) {
+                logger.warn("No visible channels after applying display settings; "
+                        + "falling back to raw pixel data");
+                return null;
+            }
+
+            return ChannelDisplayTransformServer.createColorTransformServer(
+                    baseServer, channels);
+        } catch (Exception e) {
+            logger.warn("Failed to create display transform server, "
+                    + "falling back to raw pixel data: {}", e.getMessage());
+            return null;
+        }
     }
 
     /**
