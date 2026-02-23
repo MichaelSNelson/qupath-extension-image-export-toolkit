@@ -3,8 +3,11 @@ package qupath.ext.quiet.ui;
 import java.awt.image.BufferedImage;
 import java.io.File;
 import java.io.IOException;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.ResourceBundle;
 
+import org.controlsfx.control.CheckComboBox;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -40,6 +43,7 @@ import qupath.ext.quiet.export.RenderedExportConfig.DisplaySettingsMode;
 import qupath.ext.quiet.export.RenderedImageExporter;
 import qupath.ext.quiet.export.ScaleBarRenderer;
 import qupath.ext.quiet.preferences.QuietPreferences;
+import qupath.fx.utils.FXUtils;
 import qupath.lib.analysis.heatmaps.DensityMaps;
 import qupath.lib.analysis.heatmaps.DensityMaps.DensityMapBuilder;
 import qupath.lib.classifiers.pixel.PixelClassifier;
@@ -48,6 +52,7 @@ import qupath.lib.display.settings.DisplaySettingUtils;
 import qupath.lib.display.settings.ImageDisplaySettings;
 import qupath.lib.gui.QuPathGUI;
 import qupath.lib.images.ImageData;
+import qupath.lib.objects.classes.PathClass;
 
 /**
  * Step 2a of the export wizard: Configure rendered image export.
@@ -59,6 +64,13 @@ public class RenderedConfigPane extends GridPane {
             ResourceBundle.getBundle("qupath.ext.quiet.ui.strings");
 
     private final QuPathGUI qupath;
+
+    private ComboBox<RenderedExportConfig.RegionType> regionTypeCombo;
+    private CheckComboBox<String> classificationCombo;
+    private Label classificationFilterLabel;
+    private HBox classificationFilterBox;
+    private Label paddingLabel;
+    private Spinner<Integer> paddingSpinner;
 
     private ComboBox<RenderedExportConfig.RenderMode> modeCombo;
     private ComboBox<DisplaySettingsMode> displaySettingsCombo;
@@ -144,6 +156,30 @@ public class RenderedConfigPane extends GridPane {
             }
         });
         add(modeCombo, 1, row);
+        row++;
+
+        // Region type selection
+        add(new Label(resources.getString("rendered.label.regionType")), 0, row);
+        regionTypeCombo = new ComboBox<>(FXCollections.observableArrayList(
+                RenderedExportConfig.RegionType.values()));
+        regionTypeCombo.setValue(RenderedExportConfig.RegionType.WHOLE_IMAGE);
+        regionTypeCombo.setConverter(new StringConverter<>() {
+            @Override
+            public String toString(RenderedExportConfig.RegionType type) {
+                if (type == null) return "";
+                return switch (type) {
+                    case WHOLE_IMAGE -> resources.getString("rendered.region.wholeImage");
+                    case ALL_ANNOTATIONS -> resources.getString("rendered.region.allAnnotations");
+                };
+            }
+            @Override
+            public RenderedExportConfig.RegionType fromString(String s) {
+                return RenderedExportConfig.RegionType.WHOLE_IMAGE;
+            }
+        });
+        regionTypeCombo.valueProperty().addListener(
+                (obs, oldVal, newVal) -> updateRegionTypeVisibility(newVal));
+        add(regionTypeCombo, 1, row);
         row++;
 
         // Display settings mode
@@ -267,6 +303,30 @@ public class RenderedConfigPane extends GridPane {
         formatCombo = new ComboBox<>(FXCollections.observableArrayList(OutputFormat.values()));
         formatCombo.setValue(OutputFormat.PNG);
         add(formatCombo, 1, row);
+        row++;
+
+        // Classification filter (ALL_ANNOTATIONS mode only)
+        classificationFilterLabel = new Label(resources.getString("rendered.label.classificationFilter"));
+        add(classificationFilterLabel, 0, row);
+        classificationCombo = new CheckComboBox<>();
+        classificationCombo.setMaxWidth(Double.MAX_VALUE);
+        GridPane.setHgrow(classificationCombo, Priority.ALWAYS);
+        classificationCombo.setTitle("All selected");
+        FXUtils.installSelectAllOrNoneMenu(classificationCombo);
+        var classRefreshButton = new Button(resources.getString("button.refresh"));
+        classRefreshButton.setOnAction(e -> populateAnnotationClassifications());
+        classificationFilterBox = new HBox(5, classificationCombo, classRefreshButton);
+        HBox.setHgrow(classificationCombo, Priority.ALWAYS);
+        add(classificationFilterBox, 1, row);
+        row++;
+
+        // Padding spinner (ALL_ANNOTATIONS mode only)
+        paddingLabel = new Label(resources.getString("rendered.label.padding"));
+        add(paddingLabel, 0, row);
+        paddingSpinner = new Spinner<>(new SpinnerValueFactory.IntegerSpinnerValueFactory(0, 10000, 0, 10));
+        paddingSpinner.setEditable(true);
+        paddingSpinner.setPrefWidth(100);
+        add(paddingSpinner, 1, row);
         row++;
 
         // Object overlay options
@@ -457,6 +517,10 @@ public class RenderedConfigPane extends GridPane {
         // Mode switching
         modeCombo.valueProperty().addListener((obs, oldMode, newMode) -> updateModeVisibility(newMode));
         updateModeVisibility(RenderedExportConfig.RenderMode.CLASSIFIER_OVERLAY);
+
+        // Region type visibility (default hidden)
+        updateRegionTypeVisibility(RenderedExportConfig.RegionType.WHOLE_IMAGE);
+
         wireTooltips();
     }
 
@@ -526,6 +590,42 @@ public class RenderedConfigPane extends GridPane {
         colorScaleBarBoldCheck.setManaged(show);
     }
 
+    private void updateRegionTypeVisibility(RenderedExportConfig.RegionType regionType) {
+        boolean isPerAnnotation = (regionType == RenderedExportConfig.RegionType.ALL_ANNOTATIONS);
+        classificationFilterLabel.setVisible(isPerAnnotation);
+        classificationFilterLabel.setManaged(isPerAnnotation);
+        classificationFilterBox.setVisible(isPerAnnotation);
+        classificationFilterBox.setManaged(isPerAnnotation);
+        paddingLabel.setVisible(isPerAnnotation);
+        paddingLabel.setManaged(isPerAnnotation);
+        paddingSpinner.setVisible(isPerAnnotation);
+        paddingSpinner.setManaged(isPerAnnotation);
+        if (isPerAnnotation) {
+            populateAnnotationClassifications();
+        }
+    }
+
+    private void populateAnnotationClassifications() {
+        classificationCombo.getItems().clear();
+        classificationCombo.getCheckModel().clearChecks();
+        var project = qupath.getProject();
+        if (project == null) return;
+
+        // Add "Unclassified" entry first
+        classificationCombo.getItems().add("Unclassified");
+
+        var classes = project.getPathClasses();
+        for (PathClass pc : classes) {
+            if (pc == null || pc == PathClass.NULL_CLASS) continue;
+            classificationCombo.getItems().add(pc.toString());
+        }
+
+        // Check all items by default
+        for (int i = 0; i < classificationCombo.getItems().size(); i++) {
+            classificationCombo.getCheckModel().check(i);
+        }
+    }
+
     private void updatePreviewButtonState() {
         boolean hasImage = qupath.getViewer() != null
                 && qupath.getViewer().getImageData() != null;
@@ -533,6 +633,9 @@ public class RenderedConfigPane extends GridPane {
     }
 
     private void wireTooltips() {
+        regionTypeCombo.setTooltip(createTooltip("tooltip.rendered.regionType"));
+        classificationCombo.setTooltip(createTooltip("tooltip.rendered.classificationFilter"));
+        paddingSpinner.setTooltip(createTooltip("tooltip.rendered.padding"));
         modeCombo.setTooltip(createTooltip("tooltip.rendered.mode"));
         displaySettingsCombo.setTooltip(createTooltip("tooltip.rendered.displaySettings"));
         presetNameCombo.setTooltip(createTooltip("tooltip.rendered.preset"));
@@ -630,6 +733,14 @@ public class RenderedConfigPane extends GridPane {
     }
 
     private void restorePreferences() {
+        String savedRegionType = QuietPreferences.getRenderedRegionType();
+        try {
+            regionTypeCombo.setValue(RenderedExportConfig.RegionType.valueOf(savedRegionType));
+        } catch (IllegalArgumentException e) { /* keep default */ }
+        updateRegionTypeVisibility(regionTypeCombo.getValue());
+
+        paddingSpinner.getValueFactory().setValue(QuietPreferences.getRenderedPadding());
+
         String savedMode = QuietPreferences.getRenderedMode();
         try {
             modeCombo.setValue(RenderedExportConfig.RenderMode.valueOf(savedMode));
@@ -692,6 +803,10 @@ public class RenderedConfigPane extends GridPane {
      * Save current UI state to persistent preferences.
      */
     public void savePreferences() {
+        var regionType = regionTypeCombo.getValue();
+        if (regionType != null) QuietPreferences.setRenderedRegionType(regionType.name());
+        QuietPreferences.setRenderedPadding(
+                paddingSpinner.getValue() != null ? paddingSpinner.getValue() : 0);
         var mode = modeCombo.getValue();
         if (mode != null) QuietPreferences.setRenderedMode(mode.name());
         var dsMode = displaySettingsCombo.getValue();
@@ -739,7 +854,20 @@ public class RenderedConfigPane extends GridPane {
                 ? displaySettingsCombo.getValue()
                 : DisplaySettingsMode.PER_IMAGE_SAVED;
 
+        // Collect selected classifications from CheckComboBox
+        List<String> selectedClassifications = null;
+        var currentRegionType = regionTypeCombo.getValue() != null
+                ? regionTypeCombo.getValue()
+                : RenderedExportConfig.RegionType.WHOLE_IMAGE;
+        if (currentRegionType == RenderedExportConfig.RegionType.ALL_ANNOTATIONS) {
+            selectedClassifications = new ArrayList<>(
+                    classificationCombo.getCheckModel().getCheckedItems());
+        }
+
         var builder = new RenderedExportConfig.Builder()
+                .regionType(currentRegionType)
+                .selectedClassifications(selectedClassifications)
+                .paddingPixels(paddingSpinner.getValue() != null ? paddingSpinner.getValue() : 0)
                 .renderMode(modeCombo.getValue())
                 .displaySettingsMode(dsMode)
                 .overlayOpacity(opacitySlider.getValue())

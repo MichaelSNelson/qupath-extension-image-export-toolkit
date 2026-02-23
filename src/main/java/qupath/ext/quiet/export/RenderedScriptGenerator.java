@@ -1,5 +1,7 @@
 package qupath.ext.quiet.export;
 
+import java.util.List;
+
 import com.google.gson.Gson;
 import qupath.ext.quiet.export.RenderedExportConfig;
 import qupath.ext.quiet.export.RenderedExportConfig.DisplaySettingsMode;
@@ -325,19 +327,169 @@ class RenderedScriptGenerator {
     }
 
     // ------------------------------------------------------------------
+    // Per-annotation region helpers
+    // ------------------------------------------------------------------
+
+    private static boolean isPerAnnotation(RenderedExportConfig config) {
+        return config.getRegionType() == RenderedExportConfig.RegionType.ALL_ANNOTATIONS;
+    }
+
+    /**
+     * Emit region type and per-annotation configuration variables.
+     */
+    private static void emitRegionTypeConfig(StringBuilder sb, RenderedExportConfig config) {
+        appendLine(sb, "def regionType = " + quote(config.getRegionType().name()));
+        if (isPerAnnotation(config)) {
+            appendLine(sb, "def paddingPixels = " + config.getPaddingPixels());
+            var classes = config.getSelectedClassifications();
+            if (classes != null) {
+                sb.append("def selectedClassifications = [");
+                for (int i = 0; i < classes.size(); i++) {
+                    if (i > 0) sb.append(", ");
+                    sb.append(quote(classes.get(i)));
+                }
+                sb.append("]\n");
+            } else {
+                appendLine(sb, "def selectedClassifications = null");
+            }
+        }
+    }
+
+    /**
+     * Emit per-annotation import statements.
+     */
+    private static void emitPerAnnotationImports(StringBuilder sb) {
+        appendLine(sb, "import qupath.lib.common.GeneralTools");
+        appendLine(sb, "import qupath.lib.objects.classes.PathClass");
+    }
+
+    /**
+     * Emit the annotation filtering + loop open code.
+     * After this, the script is inside a loop with variables: annotation, x, y, w, h, suffix.
+     */
+    private static void emitAnnotationLoopOpen(StringBuilder sb) {
+        appendLine(sb, "        // Collect and filter annotations");
+        appendLine(sb, "        def allAnnotations = imageData.getHierarchy().getAnnotationObjects()");
+        appendLine(sb, "        def annotations = allAnnotations");
+        appendLine(sb, "        if (selectedClassifications != null) {");
+        appendLine(sb, "            def classSet = selectedClassifications.toSet()");
+        appendLine(sb, "            annotations = allAnnotations.findAll { a ->");
+        appendLine(sb, "                def pc = a.getPathClass()");
+        appendLine(sb, "                def name = (pc == null || pc == PathClass.NULL_CLASS) ? 'Unclassified' : pc.toString()");
+        appendLine(sb, "                classSet.contains(name)");
+        appendLine(sb, "            }");
+        appendLine(sb, "        }");
+        appendLine(sb, "        if (annotations.isEmpty()) {");
+        appendLine(sb, "            println \"  SKIP: No matching annotations\"");
+        appendLine(sb, "            baseServer.close()");
+        appendLine(sb, "            continue");
+        appendLine(sb, "        }");
+        appendLine(sb, "");
+        appendLine(sb, "        def classCounters = [:]");
+        appendLine(sb, "        for (annotation in annotations) {");
+        appendLine(sb, "            def roi = annotation.getROI()");
+        appendLine(sb, "            if (roi == null) continue");
+        appendLine(sb, "            int ax = (int) roi.getBoundsX()");
+        appendLine(sb, "            int ay = (int) roi.getBoundsY()");
+        appendLine(sb, "            int aw = (int) Math.ceil(roi.getBoundsWidth())");
+        appendLine(sb, "            int ah = (int) Math.ceil(roi.getBoundsHeight())");
+        appendLine(sb, "            if (paddingPixels > 0) { ax -= paddingPixels; ay -= paddingPixels; aw += 2 * paddingPixels; ah += 2 * paddingPixels }");
+        appendLine(sb, "            ax = Math.max(0, ax); ay = Math.max(0, ay)");
+        appendLine(sb, "            aw = Math.min(aw, baseServer.getWidth() - ax)");
+        appendLine(sb, "            ah = Math.min(ah, baseServer.getHeight() - ay)");
+        appendLine(sb, "            if (aw <= 0 || ah <= 0) continue");
+        appendLine(sb, "");
+        appendLine(sb, "            def pc = annotation.getPathClass()");
+        appendLine(sb, "            def className = (pc == null || pc == PathClass.NULL_CLASS) ? 'Unclassified' : pc.toString()");
+        appendLine(sb, "            def safeName = GeneralTools.stripInvalidFilenameChars(className)");
+        appendLine(sb, "            if (safeName == null || safeName.isBlank()) safeName = 'Unknown'");
+        appendLine(sb, "            def idx = classCounters.getOrDefault(safeName, 0)");
+        appendLine(sb, "            classCounters[safeName] = idx + 1");
+        appendLine(sb, "            def suffix = '_' + safeName + '_' + idx");
+        appendLine(sb, "");
+    }
+
+    /**
+     * Emit per-annotation region read code. Sets up outW, outH, request, baseImage
+     * using ax, ay, aw, ah variables from the annotation loop.
+     */
+    private static void emitAnnotationRegionRead(StringBuilder sb, DisplaySettingsMode displayMode) {
+        appendLine(sb, "            int outW = (int) Math.ceil(aw / downsample)");
+        appendLine(sb, "            int outH = (int) Math.ceil(ah / downsample)");
+        appendLine(sb, "            def request = RegionRequest.createInstance(");
+        appendLine(sb, "                    readServer.getPath(), downsample, ax, ay, aw, ah)");
+        appendLine(sb, "            def baseImage = readServer.readRegion(request)");
+        appendLine(sb, "");
+    }
+
+    /**
+     * Emit per-annotation object overlay painting with region offset.
+     */
+    private static void emitAnnotationObjectOverlay(StringBuilder sb) {
+        appendLine(sb, "            if (includeAnnotations || includeDetections) {");
+        appendLine(sb, "                g2d.setComposite(AlphaComposite.getInstance(AlphaComposite.SRC_OVER, 1.0f))");
+        appendLine(sb, "                def overlayOptions = new OverlayOptions()");
+        appendLine(sb, "                overlayOptions.setShowAnnotations(includeAnnotations)");
+        appendLine(sb, "                overlayOptions.setShowDetections(includeDetections)");
+        appendLine(sb, "                overlayOptions.setFillAnnotations(fillAnnotations)");
+        appendLine(sb, "                overlayOptions.setShowNames(showNames)");
+        appendLine(sb, "                def hierOverlay = new HierarchyOverlay(null, overlayOptions, imageData)");
+        appendLine(sb, "                def gCopy = (Graphics2D) g2d.create()");
+        appendLine(sb, "                gCopy.scale(1.0 / downsample, 1.0 / downsample)");
+        appendLine(sb, "                gCopy.translate(-ax, -ay)");
+        appendLine(sb, "                def region = qupath.lib.regions.ImageRegion.createInstance(ax, ay, aw, ah, 0, 0)");
+        appendLine(sb, "                hierOverlay.paintOverlay(gCopy, region, downsample, imageData, true)");
+        appendLine(sb, "                gCopy.dispose()");
+        appendLine(sb, "            }");
+    }
+
+    /**
+     * Emit per-annotation scale bar drawing (uses outW, outH).
+     */
+    private static void emitAnnotationScaleBarDrawing(StringBuilder sb) {
+        appendLine(sb, "            if (showScaleBar) {");
+        appendLine(sb, "                def cal = imageData.getServer().getPixelCalibration()");
+        appendLine(sb, "                if (cal.hasPixelSizeMicrons()) {");
+        appendLine(sb, "                    double pxSize = cal.getAveragedPixelSizeMicrons() * downsample");
+        appendLine(sb, "                    g2d.setComposite(java.awt.AlphaComposite.getInstance(java.awt.AlphaComposite.SRC_OVER, 1.0f))");
+        appendLine(sb, "                    drawScaleBar(g2d, outW, outH, pxSize, scaleBarPosition, scaleBarColorR, scaleBarColorG, scaleBarColorB, scaleBarFontSize, scaleBarBoldText)");
+        appendLine(sb, "                }");
+        appendLine(sb, "            }");
+    }
+
+    /**
+     * Emit per-annotation file writing and loop close.
+     */
+    private static void emitAnnotationLoopClose(StringBuilder sb) {
+        appendLine(sb, "            g2d.dispose()");
+        appendLine(sb, "");
+        appendLine(sb, "            def sanitized = entryName.replaceAll('[^a-zA-Z0-9._\\\\-]', '_')");
+        appendLine(sb, "            def outputPath = new File(outDir, sanitized + suffix + '.' + outputFormat).getAbsolutePath()");
+        appendLine(sb, "            ImageWriterTools.writeImage(result, outputPath)");
+        appendLine(sb, "            println \"  OK: ${outputPath}\"");
+        appendLine(sb, "        } // end annotation loop");
+        appendLine(sb, "        succeeded++");
+    }
+
+    // ------------------------------------------------------------------
     // Density map script
     // ------------------------------------------------------------------
 
     private static String generateDensityMapScript(RenderedExportConfig config) {
         var sb = new StringBuilder();
         var displayMode = config.getDisplaySettingsMode();
+        boolean perAnnotation = isPerAnnotation(config);
 
         appendLine(sb, "/**");
         appendLine(sb, " * Density Map Overlay Export Script");
         appendLine(sb, " * Generated by QuIET (QuPath Image Export Toolkit)");
         appendLine(sb, " *");
-        appendLine(sb, " * Exports all project images with a density map overlay");
-        appendLine(sb, " * colorized using a LUT, at the specified downsample and opacity.");
+        if (perAnnotation) {
+            appendLine(sb, " * Exports per-annotation cropped images with a density map overlay.");
+        } else {
+            appendLine(sb, " * Exports all project images with a density map overlay");
+            appendLine(sb, " * colorized using a LUT, at the specified downsample and opacity.");
+        }
         appendLine(sb, " *");
         appendLine(sb, " * Parameters below can be modified before re-running.");
         appendLine(sb, " */");
@@ -361,12 +513,16 @@ class RenderedScriptGenerator {
         if (config.isShowScaleBar()) {
             emitScaleBarImports(sb);
         }
+        if (perAnnotation) {
+            emitPerAnnotationImports(sb);
+        }
         appendLine(sb, "");
 
         // Configuration parameters
         appendLine(sb, "// ========== CONFIGURATION (modify as needed) ==========");
         appendLine(sb, "def densityMapName = " + quote(config.getDensityMapName()));
         appendLine(sb, "def colormapName = " + quote(config.getColormapName()));
+        emitRegionTypeConfig(sb, config);
         emitDisplayConfig(sb, config);
         appendLine(sb, "def overlayOpacity = " + config.getOverlayOpacity());
         appendLine(sb, "def downsample = " + config.getDownsample());
@@ -451,90 +607,142 @@ class RenderedScriptGenerator {
 
         appendLine(sb, "        densityServer = densityBuilder.buildServer(imageData)");
         appendLine(sb, "");
-        appendLine(sb, "        int outW = (int) Math.ceil(baseServer.getWidth() / downsample)");
-        appendLine(sb, "        int outH = (int) Math.ceil(baseServer.getHeight() / downsample)");
-        appendLine(sb, "");
-        appendLine(sb, "        def request = RegionRequest.createInstance(");
-        appendLine(sb, "                readServer.getPath(), downsample,");
-        appendLine(sb, "                0, 0, readServer.getWidth(), readServer.getHeight())");
-        appendLine(sb, "        def baseImage = readServer.readRegion(request)");
-        appendLine(sb, "");
-        appendLine(sb, "        def densityRequest = RegionRequest.createInstance(");
-        appendLine(sb, "                densityServer.getPath(), downsample,");
-        appendLine(sb, "                0, 0, densityServer.getWidth(), densityServer.getHeight())");
-        appendLine(sb, "        def densityImage = densityServer.readRegion(densityRequest)");
-        appendLine(sb, "");
-        appendLine(sb, "        // Compute min/max from density raster");
-        appendLine(sb, "        def raster = densityImage.getRaster()");
-        appendLine(sb, "        double densityMin = Double.MAX_VALUE");
-        appendLine(sb, "        double densityMax = -Double.MAX_VALUE");
-        appendLine(sb, "        for (int y = 0; y < raster.getHeight(); y++) {");
-        appendLine(sb, "            for (int x = 0; x < raster.getWidth(); x++) {");
-        appendLine(sb, "                double v = raster.getSampleDouble(x, y, 0)");
-        appendLine(sb, "                if (!Double.isNaN(v)) {");
-        appendLine(sb, "                    if (v < densityMin) densityMin = v");
-        appendLine(sb, "                    if (v > densityMax) densityMax = v");
-        appendLine(sb, "                }");
-        appendLine(sb, "            }");
-        appendLine(sb, "        }");
-        appendLine(sb, "        if (densityMin > densityMax) { densityMin = 0; densityMax = 1 }");
-        appendLine(sb, "");
-        appendLine(sb, "        def colorized = colorizeDensityMap(densityImage, colorMap, densityMin, densityMax)");
-        appendLine(sb, "");
-        appendLine(sb, "        def result = new BufferedImage(");
-        appendLine(sb, "                baseImage.getWidth(), baseImage.getHeight(),");
-        appendLine(sb, "                BufferedImage.TYPE_INT_RGB)");
-        appendLine(sb, "        def g2d = result.createGraphics()");
-        appendLine(sb, "        g2d.setRenderingHint(");
-        appendLine(sb, "                RenderingHints.KEY_INTERPOLATION,");
-        appendLine(sb, "                RenderingHints.VALUE_INTERPOLATION_BILINEAR)");
-        appendLine(sb, "");
-        appendLine(sb, "        g2d.drawImage(baseImage, 0, 0, null)");
-        appendLine(sb, "");
-        appendLine(sb, "        if (overlayOpacity > 0 && colorized != null) {");
-        appendLine(sb, "            g2d.setComposite(AlphaComposite.getInstance(");
-        appendLine(sb, "                    AlphaComposite.SRC_OVER, (float) overlayOpacity))");
-        appendLine(sb, "            g2d.drawImage(colorized,");
-        appendLine(sb, "                    0, 0, baseImage.getWidth(), baseImage.getHeight(), null)");
-        appendLine(sb, "        }");
-        appendLine(sb, "");
-        appendLine(sb, "        if (includeAnnotations || includeDetections) {");
-        appendLine(sb, "            g2d.setComposite(AlphaComposite.getInstance(");
-        appendLine(sb, "                    AlphaComposite.SRC_OVER, 1.0f))");
-        appendLine(sb, "            def overlayOptions = new OverlayOptions()");
-        appendLine(sb, "            overlayOptions.setShowAnnotations(includeAnnotations)");
-        appendLine(sb, "            overlayOptions.setShowDetections(includeDetections)");
-        appendLine(sb, "            overlayOptions.setFillAnnotations(fillAnnotations)");
-        appendLine(sb, "            overlayOptions.setShowNames(showNames)");
-        appendLine(sb, "            def hierOverlay = new HierarchyOverlay(null, overlayOptions, imageData)");
-        appendLine(sb, "            def gCopy = (Graphics2D) g2d.create()");
-        appendLine(sb, "            gCopy.scale(1.0 / downsample, 1.0 / downsample)");
-        appendLine(sb, "            def region = qupath.lib.regions.ImageRegion.createInstance(");
-        appendLine(sb, "                    0, 0, baseServer.getWidth(), baseServer.getHeight(), 0, 0)");
-        appendLine(sb, "            hierOverlay.paintOverlay(gCopy, region, downsample, imageData, true)");
-        appendLine(sb, "            gCopy.dispose()");
-        appendLine(sb, "        }");
-        appendLine(sb, "");
 
-        // Scale bar drawing
-        if (config.isShowScaleBar()) {
-            emitScaleBarDrawing(sb);
+        if (perAnnotation) {
+            // Per-annotation density map rendering path
+            emitAnnotationLoopOpen(sb);
+            emitAnnotationRegionRead(sb, displayMode);
+
+            // Read density region for this annotation
+            appendLine(sb, "            def densityRequest = RegionRequest.createInstance(densityServer.getPath(), downsample, ax, ay, aw, ah)");
+            appendLine(sb, "            def densityImage = densityServer.readRegion(densityRequest)");
             appendLine(sb, "");
+
+            // Compute min/max from density raster for this region
+            appendLine(sb, "            def raster = densityImage.getRaster()");
+            appendLine(sb, "            double densityMin = Double.MAX_VALUE");
+            appendLine(sb, "            double densityMax = -Double.MAX_VALUE");
+            appendLine(sb, "            for (int y = 0; y < raster.getHeight(); y++) {");
+            appendLine(sb, "                for (int x = 0; x < raster.getWidth(); x++) {");
+            appendLine(sb, "                    double v = raster.getSampleDouble(x, y, 0)");
+            appendLine(sb, "                    if (!Double.isNaN(v)) {");
+            appendLine(sb, "                        if (v < densityMin) densityMin = v");
+            appendLine(sb, "                        if (v > densityMax) densityMax = v");
+            appendLine(sb, "                    }");
+            appendLine(sb, "                }");
+            appendLine(sb, "            }");
+            appendLine(sb, "            if (densityMin > densityMax) { densityMin = 0; densityMax = 1 }");
+            appendLine(sb, "");
+            appendLine(sb, "            def colorized = colorizeDensityMap(densityImage, colorMap, densityMin, densityMax)");
+            appendLine(sb, "");
+            appendLine(sb, "            def result = new BufferedImage(baseImage.getWidth(), baseImage.getHeight(), BufferedImage.TYPE_INT_RGB)");
+            appendLine(sb, "            def g2d = result.createGraphics()");
+            appendLine(sb, "            g2d.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_BILINEAR)");
+            appendLine(sb, "            g2d.drawImage(baseImage, 0, 0, null)");
+            appendLine(sb, "");
+            appendLine(sb, "            if (overlayOpacity > 0 && colorized != null) {");
+            appendLine(sb, "                g2d.setComposite(AlphaComposite.getInstance(AlphaComposite.SRC_OVER, (float) overlayOpacity))");
+            appendLine(sb, "                g2d.drawImage(colorized, 0, 0, baseImage.getWidth(), baseImage.getHeight(), null)");
+            appendLine(sb, "            }");
+            appendLine(sb, "");
+            emitAnnotationObjectOverlay(sb);
+            appendLine(sb, "");
+            if (config.isShowScaleBar()) {
+                emitAnnotationScaleBarDrawing(sb);
+                appendLine(sb, "");
+            }
+            if (config.isShowColorScaleBar()) {
+                // Color scale bar at annotation level (uses outW, outH from annotation region read)
+                appendLine(sb, "            if (showColorScaleBar) {");
+                appendLine(sb, "                g2d.setComposite(java.awt.AlphaComposite.getInstance(java.awt.AlphaComposite.SRC_OVER, 1.0f))");
+                appendLine(sb, "                drawColorScaleBar(g2d, outW, outH, colorMap, densityMin, densityMax, colorScaleBarPosition, colorScaleBarFontSize, colorScaleBarBoldText)");
+                appendLine(sb, "            }");
+                appendLine(sb, "");
+            }
+            emitAnnotationLoopClose(sb);
+        } else {
+            // Whole-image density map rendering path (existing code)
+            appendLine(sb, "        int outW = (int) Math.ceil(baseServer.getWidth() / downsample)");
+            appendLine(sb, "        int outH = (int) Math.ceil(baseServer.getHeight() / downsample)");
+            appendLine(sb, "");
+            appendLine(sb, "        def request = RegionRequest.createInstance(");
+            appendLine(sb, "                readServer.getPath(), downsample,");
+            appendLine(sb, "                0, 0, readServer.getWidth(), readServer.getHeight())");
+            appendLine(sb, "        def baseImage = readServer.readRegion(request)");
+            appendLine(sb, "");
+            appendLine(sb, "        def densityRequest = RegionRequest.createInstance(");
+            appendLine(sb, "                densityServer.getPath(), downsample,");
+            appendLine(sb, "                0, 0, densityServer.getWidth(), densityServer.getHeight())");
+            appendLine(sb, "        def densityImage = densityServer.readRegion(densityRequest)");
+            appendLine(sb, "");
+            appendLine(sb, "        // Compute min/max from density raster");
+            appendLine(sb, "        def raster = densityImage.getRaster()");
+            appendLine(sb, "        double densityMin = Double.MAX_VALUE");
+            appendLine(sb, "        double densityMax = -Double.MAX_VALUE");
+            appendLine(sb, "        for (int y = 0; y < raster.getHeight(); y++) {");
+            appendLine(sb, "            for (int x = 0; x < raster.getWidth(); x++) {");
+            appendLine(sb, "                double v = raster.getSampleDouble(x, y, 0)");
+            appendLine(sb, "                if (!Double.isNaN(v)) {");
+            appendLine(sb, "                    if (v < densityMin) densityMin = v");
+            appendLine(sb, "                    if (v > densityMax) densityMax = v");
+            appendLine(sb, "                }");
+            appendLine(sb, "            }");
+            appendLine(sb, "        }");
+            appendLine(sb, "        if (densityMin > densityMax) { densityMin = 0; densityMax = 1 }");
+            appendLine(sb, "");
+            appendLine(sb, "        def colorized = colorizeDensityMap(densityImage, colorMap, densityMin, densityMax)");
+            appendLine(sb, "");
+            appendLine(sb, "        def result = new BufferedImage(");
+            appendLine(sb, "                baseImage.getWidth(), baseImage.getHeight(),");
+            appendLine(sb, "                BufferedImage.TYPE_INT_RGB)");
+            appendLine(sb, "        def g2d = result.createGraphics()");
+            appendLine(sb, "        g2d.setRenderingHint(");
+            appendLine(sb, "                RenderingHints.KEY_INTERPOLATION,");
+            appendLine(sb, "                RenderingHints.VALUE_INTERPOLATION_BILINEAR)");
+            appendLine(sb, "");
+            appendLine(sb, "        g2d.drawImage(baseImage, 0, 0, null)");
+            appendLine(sb, "");
+            appendLine(sb, "        if (overlayOpacity > 0 && colorized != null) {");
+            appendLine(sb, "            g2d.setComposite(AlphaComposite.getInstance(");
+            appendLine(sb, "                    AlphaComposite.SRC_OVER, (float) overlayOpacity))");
+            appendLine(sb, "            g2d.drawImage(colorized,");
+            appendLine(sb, "                    0, 0, baseImage.getWidth(), baseImage.getHeight(), null)");
+            appendLine(sb, "        }");
+            appendLine(sb, "");
+            appendLine(sb, "        if (includeAnnotations || includeDetections) {");
+            appendLine(sb, "            g2d.setComposite(AlphaComposite.getInstance(");
+            appendLine(sb, "                    AlphaComposite.SRC_OVER, 1.0f))");
+            appendLine(sb, "            def overlayOptions = new OverlayOptions()");
+            appendLine(sb, "            overlayOptions.setShowAnnotations(includeAnnotations)");
+            appendLine(sb, "            overlayOptions.setShowDetections(includeDetections)");
+            appendLine(sb, "            overlayOptions.setFillAnnotations(fillAnnotations)");
+            appendLine(sb, "            overlayOptions.setShowNames(showNames)");
+            appendLine(sb, "            def hierOverlay = new HierarchyOverlay(null, overlayOptions, imageData)");
+            appendLine(sb, "            def gCopy = (Graphics2D) g2d.create()");
+            appendLine(sb, "            gCopy.scale(1.0 / downsample, 1.0 / downsample)");
+            appendLine(sb, "            def region = qupath.lib.regions.ImageRegion.createInstance(");
+            appendLine(sb, "                    0, 0, baseServer.getWidth(), baseServer.getHeight(), 0, 0)");
+            appendLine(sb, "            hierOverlay.paintOverlay(gCopy, region, downsample, imageData, true)");
+            appendLine(sb, "            gCopy.dispose()");
+            appendLine(sb, "        }");
+            appendLine(sb, "");
+            if (config.isShowScaleBar()) {
+                emitScaleBarDrawing(sb);
+                appendLine(sb, "");
+            }
+            if (config.isShowColorScaleBar()) {
+                emitColorScaleBarDrawing(sb);
+                appendLine(sb, "");
+            }
+            appendLine(sb, "        g2d.dispose()");
+            appendLine(sb, "");
+            appendLine(sb, "        def sanitized = entryName.replaceAll('[^a-zA-Z0-9._\\\\-]', '_')");
+            appendLine(sb, "        def outputPath = new File(outDir, sanitized + '.' + outputFormat).getAbsolutePath()");
+            appendLine(sb, "        ImageWriterTools.writeImage(result, outputPath)");
+            appendLine(sb, "        println \"  OK: ${outputPath}\"");
+            appendLine(sb, "        succeeded++");
         }
 
-        // Color scale bar drawing
-        if (config.isShowColorScaleBar()) {
-            emitColorScaleBarDrawing(sb);
-            appendLine(sb, "");
-        }
-
-        appendLine(sb, "        g2d.dispose()");
-        appendLine(sb, "");
-        appendLine(sb, "        def sanitized = entryName.replaceAll('[^a-zA-Z0-9._\\\\-]', '_')");
-        appendLine(sb, "        def outputPath = new File(outDir, sanitized + '.' + outputFormat).getAbsolutePath()");
-        appendLine(sb, "        ImageWriterTools.writeImage(result, outputPath)");
-        appendLine(sb, "        println \"  OK: ${outputPath}\"");
-        appendLine(sb, "        succeeded++");
         appendLine(sb, "");
         appendLine(sb, "        densityServer.close()");
         appendLine(sb, "        densityServer = null");
@@ -558,13 +766,18 @@ class RenderedScriptGenerator {
     private static String generateClassifierScript(RenderedExportConfig config) {
         var sb = new StringBuilder();
         var displayMode = config.getDisplaySettingsMode();
+        boolean perAnnotation = isPerAnnotation(config);
 
         appendLine(sb, "/**");
         appendLine(sb, " * Classifier Overlay Export Script");
         appendLine(sb, " * Generated by QuIET (QuPath Image Export Toolkit)");
         appendLine(sb, " *");
-        appendLine(sb, " * Exports all project images with a pixel classifier overlay");
-        appendLine(sb, " * rendered on top, at the specified downsample and opacity.");
+        if (perAnnotation) {
+            appendLine(sb, " * Exports per-annotation cropped images with a pixel classifier overlay.");
+        } else {
+            appendLine(sb, " * Exports all project images with a pixel classifier overlay");
+            appendLine(sb, " * rendered on top, at the specified downsample and opacity.");
+        }
         appendLine(sb, " *");
         appendLine(sb, " * Parameters below can be modified before re-running.");
         appendLine(sb, " */");
@@ -584,11 +797,15 @@ class RenderedScriptGenerator {
         if (config.isShowScaleBar()) {
             emitScaleBarImports(sb);
         }
+        if (perAnnotation) {
+            emitPerAnnotationImports(sb);
+        }
         appendLine(sb, "");
 
         // Configuration parameters
         appendLine(sb, "// ========== CONFIGURATION (modify as needed) ==========");
         appendLine(sb, "def classifierName = " + quote(config.getClassifierName()));
+        emitRegionTypeConfig(sb, config);
         emitDisplayConfig(sb, config);
         appendLine(sb, "def overlayOpacity = " + config.getOverlayOpacity());
         appendLine(sb, "def downsample = " + config.getDownsample());
@@ -661,67 +878,93 @@ class RenderedScriptGenerator {
 
         appendLine(sb, "        classServer = new PixelClassificationImageServer(imageData, classifier)");
         appendLine(sb, "");
-        appendLine(sb, "        int outW = (int) Math.ceil(baseServer.getWidth() / downsample)");
-        appendLine(sb, "        int outH = (int) Math.ceil(baseServer.getHeight() / downsample)");
-        appendLine(sb, "");
-        appendLine(sb, "        def request = RegionRequest.createInstance(");
-        appendLine(sb, "                readServer.getPath(), downsample,");
-        appendLine(sb, "                0, 0, readServer.getWidth(), readServer.getHeight())");
-        appendLine(sb, "        def baseImage = readServer.readRegion(request)");
-        appendLine(sb, "");
-        appendLine(sb, "        def classRequest = RegionRequest.createInstance(");
-        appendLine(sb, "                classServer.getPath(), downsample,");
-        appendLine(sb, "                0, 0, classServer.getWidth(), classServer.getHeight())");
-        appendLine(sb, "        def classImage = classServer.readRegion(classRequest)");
-        appendLine(sb, "");
-        appendLine(sb, "        def result = new BufferedImage(");
-        appendLine(sb, "                baseImage.getWidth(), baseImage.getHeight(),");
-        appendLine(sb, "                BufferedImage.TYPE_INT_RGB)");
-        appendLine(sb, "        def g2d = result.createGraphics()");
-        appendLine(sb, "        g2d.setRenderingHint(");
-        appendLine(sb, "                RenderingHints.KEY_INTERPOLATION,");
-        appendLine(sb, "                RenderingHints.VALUE_INTERPOLATION_BILINEAR)");
-        appendLine(sb, "");
-        appendLine(sb, "        g2d.drawImage(baseImage, 0, 0, null)");
-        appendLine(sb, "");
-        appendLine(sb, "        if (overlayOpacity > 0 && classImage != null) {");
-        appendLine(sb, "            g2d.setComposite(AlphaComposite.getInstance(");
-        appendLine(sb, "                    AlphaComposite.SRC_OVER, (float) overlayOpacity))");
-        appendLine(sb, "            g2d.drawImage(classImage,");
-        appendLine(sb, "                    0, 0, baseImage.getWidth(), baseImage.getHeight(), null)");
-        appendLine(sb, "        }");
-        appendLine(sb, "");
-        appendLine(sb, "        if (includeAnnotations || includeDetections) {");
-        appendLine(sb, "            g2d.setComposite(AlphaComposite.getInstance(");
-        appendLine(sb, "                    AlphaComposite.SRC_OVER, 1.0f))");
-        appendLine(sb, "            def overlayOptions = new OverlayOptions()");
-        appendLine(sb, "            overlayOptions.setShowAnnotations(includeAnnotations)");
-        appendLine(sb, "            overlayOptions.setShowDetections(includeDetections)");
-        appendLine(sb, "            overlayOptions.setFillAnnotations(fillAnnotations)");
-        appendLine(sb, "            overlayOptions.setShowNames(showNames)");
-        appendLine(sb, "            def hierOverlay = new HierarchyOverlay(null, overlayOptions, imageData)");
-        appendLine(sb, "            def gCopy = (Graphics2D) g2d.create()");
-        appendLine(sb, "            gCopy.scale(1.0 / downsample, 1.0 / downsample)");
-        appendLine(sb, "            def region = qupath.lib.regions.ImageRegion.createInstance(");
-        appendLine(sb, "                    0, 0, baseServer.getWidth(), baseServer.getHeight(), 0, 0)");
-        appendLine(sb, "            hierOverlay.paintOverlay(gCopy, region, downsample, imageData, true)");
-        appendLine(sb, "            gCopy.dispose()");
-        appendLine(sb, "        }");
-        appendLine(sb, "");
 
-        // Scale bar drawing
-        if (config.isShowScaleBar()) {
-            emitScaleBarDrawing(sb);
+        if (perAnnotation) {
+            // Per-annotation classifier rendering path
+            emitAnnotationLoopOpen(sb);
+            emitAnnotationRegionRead(sb, displayMode);
+            appendLine(sb, "            def classRequest = RegionRequest.createInstance(classServer.getPath(), downsample, ax, ay, aw, ah)");
+            appendLine(sb, "            def classImage = classServer.readRegion(classRequest)");
             appendLine(sb, "");
+            appendLine(sb, "            def result = new BufferedImage(baseImage.getWidth(), baseImage.getHeight(), BufferedImage.TYPE_INT_RGB)");
+            appendLine(sb, "            def g2d = result.createGraphics()");
+            appendLine(sb, "            g2d.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_BILINEAR)");
+            appendLine(sb, "            g2d.drawImage(baseImage, 0, 0, null)");
+            appendLine(sb, "");
+            appendLine(sb, "            if (overlayOpacity > 0 && classImage != null) {");
+            appendLine(sb, "                g2d.setComposite(AlphaComposite.getInstance(AlphaComposite.SRC_OVER, (float) overlayOpacity))");
+            appendLine(sb, "                g2d.drawImage(classImage, 0, 0, baseImage.getWidth(), baseImage.getHeight(), null)");
+            appendLine(sb, "            }");
+            appendLine(sb, "");
+            emitAnnotationObjectOverlay(sb);
+            appendLine(sb, "");
+            if (config.isShowScaleBar()) {
+                emitAnnotationScaleBarDrawing(sb);
+                appendLine(sb, "");
+            }
+            emitAnnotationLoopClose(sb);
+        } else {
+            // Whole-image classifier rendering path (existing code)
+            appendLine(sb, "        int outW = (int) Math.ceil(baseServer.getWidth() / downsample)");
+            appendLine(sb, "        int outH = (int) Math.ceil(baseServer.getHeight() / downsample)");
+            appendLine(sb, "");
+            appendLine(sb, "        def request = RegionRequest.createInstance(");
+            appendLine(sb, "                readServer.getPath(), downsample,");
+            appendLine(sb, "                0, 0, readServer.getWidth(), readServer.getHeight())");
+            appendLine(sb, "        def baseImage = readServer.readRegion(request)");
+            appendLine(sb, "");
+            appendLine(sb, "        def classRequest = RegionRequest.createInstance(");
+            appendLine(sb, "                classServer.getPath(), downsample,");
+            appendLine(sb, "                0, 0, classServer.getWidth(), classServer.getHeight())");
+            appendLine(sb, "        def classImage = classServer.readRegion(classRequest)");
+            appendLine(sb, "");
+            appendLine(sb, "        def result = new BufferedImage(");
+            appendLine(sb, "                baseImage.getWidth(), baseImage.getHeight(),");
+            appendLine(sb, "                BufferedImage.TYPE_INT_RGB)");
+            appendLine(sb, "        def g2d = result.createGraphics()");
+            appendLine(sb, "        g2d.setRenderingHint(");
+            appendLine(sb, "                RenderingHints.KEY_INTERPOLATION,");
+            appendLine(sb, "                RenderingHints.VALUE_INTERPOLATION_BILINEAR)");
+            appendLine(sb, "");
+            appendLine(sb, "        g2d.drawImage(baseImage, 0, 0, null)");
+            appendLine(sb, "");
+            appendLine(sb, "        if (overlayOpacity > 0 && classImage != null) {");
+            appendLine(sb, "            g2d.setComposite(AlphaComposite.getInstance(");
+            appendLine(sb, "                    AlphaComposite.SRC_OVER, (float) overlayOpacity))");
+            appendLine(sb, "            g2d.drawImage(classImage,");
+            appendLine(sb, "                    0, 0, baseImage.getWidth(), baseImage.getHeight(), null)");
+            appendLine(sb, "        }");
+            appendLine(sb, "");
+            appendLine(sb, "        if (includeAnnotations || includeDetections) {");
+            appendLine(sb, "            g2d.setComposite(AlphaComposite.getInstance(");
+            appendLine(sb, "                    AlphaComposite.SRC_OVER, 1.0f))");
+            appendLine(sb, "            def overlayOptions = new OverlayOptions()");
+            appendLine(sb, "            overlayOptions.setShowAnnotations(includeAnnotations)");
+            appendLine(sb, "            overlayOptions.setShowDetections(includeDetections)");
+            appendLine(sb, "            overlayOptions.setFillAnnotations(fillAnnotations)");
+            appendLine(sb, "            overlayOptions.setShowNames(showNames)");
+            appendLine(sb, "            def hierOverlay = new HierarchyOverlay(null, overlayOptions, imageData)");
+            appendLine(sb, "            def gCopy = (Graphics2D) g2d.create()");
+            appendLine(sb, "            gCopy.scale(1.0 / downsample, 1.0 / downsample)");
+            appendLine(sb, "            def region = qupath.lib.regions.ImageRegion.createInstance(");
+            appendLine(sb, "                    0, 0, baseServer.getWidth(), baseServer.getHeight(), 0, 0)");
+            appendLine(sb, "            hierOverlay.paintOverlay(gCopy, region, downsample, imageData, true)");
+            appendLine(sb, "            gCopy.dispose()");
+            appendLine(sb, "        }");
+            appendLine(sb, "");
+            if (config.isShowScaleBar()) {
+                emitScaleBarDrawing(sb);
+                appendLine(sb, "");
+            }
+            appendLine(sb, "        g2d.dispose()");
+            appendLine(sb, "");
+            appendLine(sb, "        def sanitized = entryName.replaceAll('[^a-zA-Z0-9._\\\\-]', '_')");
+            appendLine(sb, "        def outputPath = new File(outDir, sanitized + '.' + outputFormat).getAbsolutePath()");
+            appendLine(sb, "        ImageWriterTools.writeImage(result, outputPath)");
+            appendLine(sb, "        println \"  OK: ${outputPath}\"");
+            appendLine(sb, "        succeeded++");
         }
 
-        appendLine(sb, "        g2d.dispose()");
-        appendLine(sb, "");
-        appendLine(sb, "        def sanitized = entryName.replaceAll('[^a-zA-Z0-9._\\\\-]', '_')");
-        appendLine(sb, "        def outputPath = new File(outDir, sanitized + '.' + outputFormat).getAbsolutePath()");
-        appendLine(sb, "        ImageWriterTools.writeImage(result, outputPath)");
-        appendLine(sb, "        println \"  OK: ${outputPath}\"");
-        appendLine(sb, "        succeeded++");
         appendLine(sb, "");
         appendLine(sb, "        classServer.close()");
         appendLine(sb, "        classServer = null");
@@ -745,13 +988,18 @@ class RenderedScriptGenerator {
     private static String generateObjectOverlayScript(RenderedExportConfig config) {
         var sb = new StringBuilder();
         var displayMode = config.getDisplaySettingsMode();
+        boolean perAnnotation = isPerAnnotation(config);
 
         appendLine(sb, "/**");
         appendLine(sb, " * Object Overlay Export Script");
         appendLine(sb, " * Generated by QuIET (QuPath Image Export Toolkit)");
         appendLine(sb, " *");
-        appendLine(sb, " * Exports all project images with object overlays");
-        appendLine(sb, " * (annotations and/or detections) rendered on top.");
+        if (perAnnotation) {
+            appendLine(sb, " * Exports per-annotation cropped images with object overlays.");
+        } else {
+            appendLine(sb, " * Exports all project images with object overlays");
+            appendLine(sb, " * (annotations and/or detections) rendered on top.");
+        }
         appendLine(sb, " *");
         appendLine(sb, " * Parameters below can be modified before re-running.");
         appendLine(sb, " */");
@@ -770,10 +1018,14 @@ class RenderedScriptGenerator {
         if (config.isShowScaleBar()) {
             emitScaleBarImports(sb);
         }
+        if (perAnnotation) {
+            emitPerAnnotationImports(sb);
+        }
         appendLine(sb, "");
 
         // Configuration parameters
         appendLine(sb, "// ========== CONFIGURATION (modify as needed) ==========");
+        emitRegionTypeConfig(sb, config);
         emitDisplayConfig(sb, config);
         appendLine(sb, "def overlayOpacity = " + config.getOverlayOpacity());
         appendLine(sb, "def downsample = " + config.getDownsample());
@@ -829,55 +1081,75 @@ class RenderedScriptGenerator {
         emitDisplayServerWrapping(sb, displayMode);
         appendLine(sb, "");
 
-        appendLine(sb, "        int outW = (int) Math.ceil(baseServer.getWidth() / downsample)");
-        appendLine(sb, "        int outH = (int) Math.ceil(baseServer.getHeight() / downsample)");
-        appendLine(sb, "");
-        appendLine(sb, "        def request = RegionRequest.createInstance(");
-        appendLine(sb, "                readServer.getPath(), downsample,");
-        appendLine(sb, "                0, 0, readServer.getWidth(), readServer.getHeight())");
-        appendLine(sb, "        def baseImage = readServer.readRegion(request)");
-        appendLine(sb, "");
-        appendLine(sb, "        def result = new BufferedImage(");
-        appendLine(sb, "                baseImage.getWidth(), baseImage.getHeight(),");
-        appendLine(sb, "                BufferedImage.TYPE_INT_RGB)");
-        appendLine(sb, "        def g2d = result.createGraphics()");
-        appendLine(sb, "        g2d.setRenderingHint(");
-        appendLine(sb, "                RenderingHints.KEY_INTERPOLATION,");
-        appendLine(sb, "                RenderingHints.VALUE_INTERPOLATION_BILINEAR)");
-        appendLine(sb, "");
-        appendLine(sb, "        g2d.drawImage(baseImage, 0, 0, null)");
-        appendLine(sb, "");
-        appendLine(sb, "        if (overlayOpacity > 0) {");
-        appendLine(sb, "            g2d.setComposite(AlphaComposite.getInstance(");
-        appendLine(sb, "                    AlphaComposite.SRC_OVER, (float) overlayOpacity))");
-        appendLine(sb, "            def overlayOptions = new OverlayOptions()");
-        appendLine(sb, "            overlayOptions.setShowAnnotations(includeAnnotations)");
-        appendLine(sb, "            overlayOptions.setShowDetections(includeDetections)");
-        appendLine(sb, "            overlayOptions.setFillAnnotations(fillAnnotations)");
-        appendLine(sb, "            overlayOptions.setShowNames(showNames)");
-        appendLine(sb, "            def hierOverlay = new HierarchyOverlay(null, overlayOptions, imageData)");
-        appendLine(sb, "            def gCopy = (Graphics2D) g2d.create()");
-        appendLine(sb, "            gCopy.scale(1.0 / downsample, 1.0 / downsample)");
-        appendLine(sb, "            def region = qupath.lib.regions.ImageRegion.createInstance(");
-        appendLine(sb, "                    0, 0, baseServer.getWidth(), baseServer.getHeight(), 0, 0)");
-        appendLine(sb, "            hierOverlay.paintOverlay(gCopy, region, downsample, imageData, true)");
-        appendLine(sb, "            gCopy.dispose()");
-        appendLine(sb, "        }");
-        appendLine(sb, "");
-
-        // Scale bar drawing
-        if (config.isShowScaleBar()) {
-            emitScaleBarDrawing(sb);
+        if (perAnnotation) {
+            // Per-annotation rendering path
+            emitAnnotationLoopOpen(sb);
+            emitAnnotationRegionRead(sb, displayMode);
+            appendLine(sb, "            def result = new BufferedImage(baseImage.getWidth(), baseImage.getHeight(), BufferedImage.TYPE_INT_RGB)");
+            appendLine(sb, "            def g2d = result.createGraphics()");
+            appendLine(sb, "            g2d.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_BILINEAR)");
+            appendLine(sb, "            g2d.drawImage(baseImage, 0, 0, null)");
             appendLine(sb, "");
+            appendLine(sb, "            if (overlayOpacity > 0) {");
+            appendLine(sb, "                g2d.setComposite(AlphaComposite.getInstance(AlphaComposite.SRC_OVER, (float) overlayOpacity))");
+            emitAnnotationObjectOverlay(sb);
+            appendLine(sb, "            }");
+            appendLine(sb, "");
+            if (config.isShowScaleBar()) {
+                emitAnnotationScaleBarDrawing(sb);
+                appendLine(sb, "");
+            }
+            emitAnnotationLoopClose(sb);
+        } else {
+            // Whole-image rendering path (existing code)
+            appendLine(sb, "        int outW = (int) Math.ceil(baseServer.getWidth() / downsample)");
+            appendLine(sb, "        int outH = (int) Math.ceil(baseServer.getHeight() / downsample)");
+            appendLine(sb, "");
+            appendLine(sb, "        def request = RegionRequest.createInstance(");
+            appendLine(sb, "                readServer.getPath(), downsample,");
+            appendLine(sb, "                0, 0, readServer.getWidth(), readServer.getHeight())");
+            appendLine(sb, "        def baseImage = readServer.readRegion(request)");
+            appendLine(sb, "");
+            appendLine(sb, "        def result = new BufferedImage(");
+            appendLine(sb, "                baseImage.getWidth(), baseImage.getHeight(),");
+            appendLine(sb, "                BufferedImage.TYPE_INT_RGB)");
+            appendLine(sb, "        def g2d = result.createGraphics()");
+            appendLine(sb, "        g2d.setRenderingHint(");
+            appendLine(sb, "                RenderingHints.KEY_INTERPOLATION,");
+            appendLine(sb, "                RenderingHints.VALUE_INTERPOLATION_BILINEAR)");
+            appendLine(sb, "");
+            appendLine(sb, "        g2d.drawImage(baseImage, 0, 0, null)");
+            appendLine(sb, "");
+            appendLine(sb, "        if (overlayOpacity > 0) {");
+            appendLine(sb, "            g2d.setComposite(AlphaComposite.getInstance(");
+            appendLine(sb, "                    AlphaComposite.SRC_OVER, (float) overlayOpacity))");
+            appendLine(sb, "            def overlayOptions = new OverlayOptions()");
+            appendLine(sb, "            overlayOptions.setShowAnnotations(includeAnnotations)");
+            appendLine(sb, "            overlayOptions.setShowDetections(includeDetections)");
+            appendLine(sb, "            overlayOptions.setFillAnnotations(fillAnnotations)");
+            appendLine(sb, "            overlayOptions.setShowNames(showNames)");
+            appendLine(sb, "            def hierOverlay = new HierarchyOverlay(null, overlayOptions, imageData)");
+            appendLine(sb, "            def gCopy = (Graphics2D) g2d.create()");
+            appendLine(sb, "            gCopy.scale(1.0 / downsample, 1.0 / downsample)");
+            appendLine(sb, "            def region = qupath.lib.regions.ImageRegion.createInstance(");
+            appendLine(sb, "                    0, 0, baseServer.getWidth(), baseServer.getHeight(), 0, 0)");
+            appendLine(sb, "            hierOverlay.paintOverlay(gCopy, region, downsample, imageData, true)");
+            appendLine(sb, "            gCopy.dispose()");
+            appendLine(sb, "        }");
+            appendLine(sb, "");
+            if (config.isShowScaleBar()) {
+                emitScaleBarDrawing(sb);
+                appendLine(sb, "");
+            }
+            appendLine(sb, "        g2d.dispose()");
+            appendLine(sb, "");
+            appendLine(sb, "        def sanitized = entryName.replaceAll('[^a-zA-Z0-9._\\\\-]', '_')");
+            appendLine(sb, "        def outputPath = new File(outDir, sanitized + '.' + outputFormat).getAbsolutePath()");
+            appendLine(sb, "        ImageWriterTools.writeImage(result, outputPath)");
+            appendLine(sb, "        println \"  OK: ${outputPath}\"");
+            appendLine(sb, "        succeeded++");
         }
 
-        appendLine(sb, "        g2d.dispose()");
-        appendLine(sb, "");
-        appendLine(sb, "        def sanitized = entryName.replaceAll('[^a-zA-Z0-9._\\\\-]', '_')");
-        appendLine(sb, "        def outputPath = new File(outDir, sanitized + '.' + outputFormat).getAbsolutePath()");
-        appendLine(sb, "        ImageWriterTools.writeImage(result, outputPath)");
-        appendLine(sb, "        println \"  OK: ${outputPath}\"");
-        appendLine(sb, "        succeeded++");
         appendLine(sb, "");
         appendLine(sb, "        baseServer.close()");
         appendLine(sb, "");

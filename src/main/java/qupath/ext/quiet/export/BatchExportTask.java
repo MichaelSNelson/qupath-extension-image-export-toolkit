@@ -207,19 +207,24 @@ public class BatchExportTask extends Task<ExportResult> {
 
     private void exportRendered(ImageData<BufferedImage> imageData, String entryName)
             throws Exception {
-        switch (renderedConfig.getRenderMode()) {
-            case OBJECT_OVERLAY ->
-                RenderedImageExporter.exportWithObjectOverlay(imageData, renderedConfig, entryName);
-            case DENSITY_MAP_OVERLAY ->
-                RenderedImageExporter.exportWithDensityMap(
-                        imageData, densityBuilder, renderedConfig, entryName);
-            case CLASSIFIER_OVERLAY -> {
-                if (!classifier.supportsImage(imageData)) {
-                    throw new IllegalArgumentException(
-                            "Classifier does not support image: " + entryName);
+        if (renderedConfig.getRegionType() == RenderedExportConfig.RegionType.ALL_ANNOTATIONS) {
+            RenderedImageExporter.exportPerAnnotation(
+                    imageData, classifier, densityBuilder, renderedConfig, entryName);
+        } else {
+            switch (renderedConfig.getRenderMode()) {
+                case OBJECT_OVERLAY ->
+                    RenderedImageExporter.exportWithObjectOverlay(imageData, renderedConfig, entryName);
+                case DENSITY_MAP_OVERLAY ->
+                    RenderedImageExporter.exportWithDensityMap(
+                            imageData, densityBuilder, renderedConfig, entryName);
+                case CLASSIFIER_OVERLAY -> {
+                    if (!classifier.supportsImage(imageData)) {
+                        throw new IllegalArgumentException(
+                                "Classifier does not support image: " + entryName);
+                    }
+                    RenderedImageExporter.exportWithClassifier(
+                            imageData, classifier, renderedConfig, entryName);
                 }
-                RenderedImageExporter.exportWithClassifier(
-                        imageData, classifier, renderedConfig, entryName);
             }
         }
     }

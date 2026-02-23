@@ -2,6 +2,7 @@ package qupath.ext.quiet.export;
 
 import java.awt.Color;
 import java.io.File;
+import java.util.List;
 
 import qupath.lib.common.GeneralTools;
 import qupath.lib.display.settings.ImageDisplaySettings;
@@ -13,6 +14,16 @@ import qupath.lib.display.settings.ImageDisplaySettings;
  * (annotations/detections).
  */
 public class RenderedExportConfig {
+
+    /**
+     * Which region(s) of the image to export.
+     */
+    public enum RegionType {
+        /** Export the entire image. */
+        WHOLE_IMAGE,
+        /** Export each annotation as a separate cropped image. */
+        ALL_ANNOTATIONS
+    }
 
     /**
      * The render mode for the exported image.
@@ -41,6 +52,9 @@ public class RenderedExportConfig {
         RAW
     }
 
+    private final RegionType regionType;
+    private final List<String> selectedClassifications;
+    private final int paddingPixels;
     private final RenderMode renderMode;
     private final DisplaySettingsMode displaySettingsMode;
     private final ImageDisplaySettings capturedDisplaySettings;
@@ -68,6 +82,10 @@ public class RenderedExportConfig {
     private final boolean colorScaleBarBoldText;
 
     private RenderedExportConfig(Builder builder) {
+        this.regionType = builder.regionType;
+        this.selectedClassifications = builder.selectedClassifications == null
+                ? null : List.copyOf(builder.selectedClassifications);
+        this.paddingPixels = builder.paddingPixels;
         this.renderMode = builder.renderMode;
         this.displaySettingsMode = builder.displaySettingsMode;
         this.capturedDisplaySettings = builder.capturedDisplaySettings;
@@ -93,6 +111,26 @@ public class RenderedExportConfig {
         this.colorScaleBarPosition = builder.colorScaleBarPosition;
         this.colorScaleBarFontSize = builder.colorScaleBarFontSize;
         this.colorScaleBarBoldText = builder.colorScaleBarBoldText;
+    }
+
+    public RegionType getRegionType() {
+        return regionType;
+    }
+
+    /**
+     * Returns the classification names to filter annotations by.
+     * Null means export all annotations regardless of classification.
+     */
+    public List<String> getSelectedClassifications() {
+        return selectedClassifications;
+    }
+
+    /**
+     * Padding in pixels to add around each annotation's bounding box.
+     * Only applies when region type is ALL_ANNOTATIONS.
+     */
+    public int getPaddingPixels() {
+        return paddingPixels;
     }
 
     public RenderMode getRenderMode() {
@@ -239,10 +277,28 @@ public class RenderedExportConfig {
     }
 
     /**
+     * Generates a sanitized output filename with a suffix (e.g., for annotation regions).
+     *
+     * @param entryName the project image entry name
+     * @param suffix    additional suffix (e.g., "_Tumor_0")
+     * @return sanitized filename with suffix and appropriate extension
+     */
+    public String buildOutputFilename(String entryName, String suffix) {
+        String sanitized = GeneralTools.stripInvalidFilenameChars(entryName);
+        if (sanitized == null || sanitized.isBlank()) {
+            sanitized = "unnamed";
+        }
+        return sanitized + suffix + "." + format.getExtension();
+    }
+
+    /**
      * Builder for creating {@link RenderedExportConfig} instances.
      */
     public static class Builder {
 
+        private RegionType regionType = RegionType.WHOLE_IMAGE;
+        private List<String> selectedClassifications = null;
+        private int paddingPixels = 0;
         private RenderMode renderMode = RenderMode.CLASSIFIER_OVERLAY;
         private DisplaySettingsMode displaySettingsMode = DisplaySettingsMode.PER_IMAGE_SAVED;
         private ImageDisplaySettings capturedDisplaySettings;
@@ -268,6 +324,21 @@ public class RenderedExportConfig {
         private ScaleBarRenderer.Position colorScaleBarPosition = ScaleBarRenderer.Position.LOWER_RIGHT;
         private int colorScaleBarFontSize = 0;
         private boolean colorScaleBarBoldText = true;
+
+        public Builder regionType(RegionType type) {
+            this.regionType = type;
+            return this;
+        }
+
+        public Builder selectedClassifications(List<String> classifications) {
+            this.selectedClassifications = classifications;
+            return this;
+        }
+
+        public Builder paddingPixels(int padding) {
+            this.paddingPixels = padding;
+            return this;
+        }
 
         public Builder renderMode(RenderMode mode) {
             this.renderMode = mode;

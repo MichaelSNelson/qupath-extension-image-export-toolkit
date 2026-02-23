@@ -8,7 +8,11 @@ import java.awt.image.BufferedImage;
 import java.awt.image.WritableRaster;
 import java.io.File;
 import java.io.IOException;
+import java.util.Collection;
+import java.util.LinkedHashMap;
 import java.util.Map;
+import java.util.Set;
+import java.util.concurrent.atomic.AtomicInteger;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -18,6 +22,7 @@ import qupath.lib.analysis.heatmaps.DensityMaps.DensityMapBuilder;
 import qupath.lib.classifiers.pixel.PixelClassificationImageServer;
 import qupath.lib.classifiers.pixel.PixelClassifier;
 import qupath.lib.color.ColorMaps;
+import qupath.lib.common.GeneralTools;
 import qupath.lib.display.ImageDisplay;
 import qupath.lib.display.settings.DisplaySettingUtils;
 import qupath.lib.gui.images.servers.ChannelDisplayTransformServer;
@@ -26,8 +31,12 @@ import qupath.lib.gui.viewer.overlays.HierarchyOverlay;
 import qupath.lib.images.ImageData;
 import qupath.lib.images.servers.ImageServer;
 import qupath.lib.images.writers.ImageWriterTools;
+import qupath.lib.objects.PathAnnotationObject;
+import qupath.lib.objects.PathObject;
+import qupath.lib.objects.classes.PathClass;
 import qupath.lib.regions.ImageRegion;
 import qupath.lib.regions.RegionRequest;
+import qupath.lib.roi.interfaces.ROI;
 
 /**
  * Exports a single image with overlays rendered on top.
@@ -171,6 +180,277 @@ public class RenderedImageExporter {
     }
 
     /**
+     * Exports one cropped rendered image per annotation in the image hierarchy.
+     * Annotations can be filtered by classification. All three render modes
+     * (classifier, object overlay, density map) are supported.
+     *
+     * @param imageData      the image data to export (caller is responsible for closing)
+     * @param classifier     the pixel classifier (null for non-CLASSIFIER modes)
+     * @param densityBuilder the density map builder (null for non-DENSITY_MAP modes)
+     * @param config         rendered export configuration (must have regionType ALL_ANNOTATIONS)
+     * @param entryName      the image entry name (used for filename generation)
+     * @return the number of annotation regions successfully exported
+     * @throws IOException if the export fails
+     */
+    public static int exportPerAnnotation(ImageData<BufferedImage> imageData,
+                                           PixelClassifier classifier,
+                                           DensityMapBuilder densityBuilder,
+                                           RenderedExportConfig config,
+                                           String entryName) throws IOException {
+
+        ImageServer<BufferedImage> baseServer = imageData.getServer();
+        int serverW = baseServer.getWidth();
+        int serverH = baseServer.getHeight();
+
+        // Collect annotations and filter by classification
+        Collection<PathObject> annotations = imageData.getHierarchy()
+                .getAnnotationObjects().stream()
+                .map(p -> (PathObject) p)
+                .toList();
+
+        var selectedClasses = config.getSelectedClassifications();
+        if (selectedClasses != null) {
+            Set<String> classSet = Set.copyOf(selectedClasses);
+            annotations = annotations.stream()
+                    .filter(a -> {
+                        PathClass pc = a.getPathClass();
+                        String name = (pc == null || pc == PathClass.NULL_CLASS)
+                                ? "Unclassified" : pc.toString();
+                        return classSet.contains(name);
+                    })
+                    .toList();
+        }
+
+        if (annotations.isEmpty()) {
+            logger.warn("No matching annotations found for: {}", entryName);
+            return 0;
+        }
+
+        // Set up servers for the render mode
+        PixelClassificationImageServer classificationServer = null;
+        ImageServer<BufferedImage> displayServer = null;
+        ImageServer<BufferedImage> densityServer = null;
+
+        try {
+            displayServer = resolveDisplayServer(imageData, baseServer, config);
+
+            if (config.getRenderMode() == RenderedExportConfig.RenderMode.CLASSIFIER_OVERLAY
+                    && classifier != null) {
+                if (!classifier.supportsImage(imageData)) {
+                    throw new IllegalArgumentException(
+                            "Classifier does not support image: " + entryName);
+                }
+                classificationServer = new PixelClassificationImageServer(imageData, classifier);
+            } else if (config.getRenderMode() == RenderedExportConfig.RenderMode.DENSITY_MAP_OVERLAY
+                    && densityBuilder != null) {
+                densityServer = densityBuilder.buildServer(imageData);
+            }
+
+            // Per-class index counters for filename suffixes
+            Map<String, AtomicInteger> classCounters = new LinkedHashMap<>();
+            int padding = config.getPaddingPixels();
+            int exported = 0;
+
+            for (PathObject annotation : annotations) {
+                ROI roi = annotation.getROI();
+                if (roi == null) continue;
+
+                int x = (int) roi.getBoundsX();
+                int y = (int) roi.getBoundsY();
+                int w = (int) Math.ceil(roi.getBoundsWidth());
+                int h = (int) Math.ceil(roi.getBoundsHeight());
+
+                // Apply padding
+                if (padding > 0) {
+                    x -= padding;
+                    y -= padding;
+                    w += 2 * padding;
+                    h += 2 * padding;
+                }
+
+                // Clamp to image bounds
+                x = Math.max(0, x);
+                y = Math.max(0, y);
+                w = Math.min(w, serverW - x);
+                h = Math.min(h, serverH - y);
+
+                if (w <= 0 || h <= 0) continue;
+
+                try {
+                    BufferedImage regionImage = renderRegion(
+                            imageData, baseServer,
+                            classificationServer, densityServer, displayServer,
+                            config, x, y, w, h);
+
+                    // Build classification-based filename suffix
+                    PathClass pc = annotation.getPathClass();
+                    String className = (pc == null || pc == PathClass.NULL_CLASS)
+                            ? "Unclassified" : pc.toString();
+                    String safeName = GeneralTools.stripInvalidFilenameChars(className);
+                    if (safeName == null || safeName.isBlank()) safeName = "Unknown";
+
+                    int idx = classCounters.computeIfAbsent(safeName,
+                            k -> new AtomicInteger(0)).getAndIncrement();
+                    String suffix = "_" + safeName + "_" + idx;
+
+                    String filename = config.buildOutputFilename(entryName, suffix);
+                    File outputFile = new File(config.getOutputDirectory(), filename);
+                    ImageWriterTools.writeImage(regionImage, outputFile.getAbsolutePath());
+
+                    logger.debug("Exported annotation region: {}", outputFile.getAbsolutePath());
+                    exported++;
+
+                } catch (Exception e) {
+                    logger.warn("Failed to export annotation for {}: {}",
+                            entryName, e.getMessage());
+                }
+            }
+
+            logger.info("Exported {} annotation regions for: {}", exported, entryName);
+            return exported;
+
+        } catch (IllegalArgumentException e) {
+            throw e;
+        } catch (Exception e) {
+            throw new IOException("Failed to export per-annotation images: " + entryName, e);
+        } finally {
+            closeQuietly(displayServer, entryName);
+            closeQuietly(classificationServer, entryName);
+            closeQuietly(densityServer, entryName);
+        }
+    }
+
+    /**
+     * Render a specific region of the image with overlays composited on top.
+     * Handles all three render modes (classifier, object overlay, density map).
+     */
+    private static BufferedImage renderRegion(
+            ImageData<BufferedImage> imageData,
+            ImageServer<BufferedImage> baseServer,
+            PixelClassificationImageServer classificationServer,
+            ImageServer<BufferedImage> densityServer,
+            ImageServer<BufferedImage> displayServer,
+            RenderedExportConfig config,
+            int x, int y, int w, int h) throws Exception {
+
+        double downsample = config.getDownsample();
+        int outW = (int) Math.ceil(w / downsample);
+        int outH = (int) Math.ceil(h / downsample);
+
+        // Read base image region
+        ImageServer<BufferedImage> readServer =
+                displayServer != null ? displayServer : baseServer;
+        RegionRequest request = RegionRequest.createInstance(
+                readServer.getPath(), downsample, x, y, w, h);
+        BufferedImage baseImage = readServer.readRegion(request);
+
+        BufferedImage result = new BufferedImage(
+                baseImage.getWidth(), baseImage.getHeight(),
+                BufferedImage.TYPE_INT_RGB);
+
+        Graphics2D g2d = result.createGraphics();
+        g2d.setRenderingHint(
+                RenderingHints.KEY_INTERPOLATION,
+                RenderingHints.VALUE_INTERPOLATION_BILINEAR);
+
+        g2d.drawImage(baseImage, 0, 0, null);
+
+        float opacity = (float) config.getOverlayOpacity();
+
+        // Composite classifier or density map overlay
+        if (classificationServer != null && opacity > 0) {
+            RegionRequest classRequest = RegionRequest.createInstance(
+                    classificationServer.getPath(), downsample, x, y, w, h);
+            BufferedImage classImage = classificationServer.readRegion(classRequest);
+            if (classImage != null) {
+                g2d.setComposite(AlphaComposite.getInstance(
+                        AlphaComposite.SRC_OVER, opacity));
+                g2d.drawImage(classImage,
+                        0, 0, baseImage.getWidth(), baseImage.getHeight(), null);
+            }
+        } else if (densityServer != null && opacity > 0) {
+            RegionRequest densityRequest = RegionRequest.createInstance(
+                    densityServer.getPath(), downsample, x, y, w, h);
+            BufferedImage densityImage = densityServer.readRegion(densityRequest);
+
+            ColorMaps.ColorMap colorMap = resolveColorMap(config.getColormapName());
+            double[] minMax = computeMinMax(densityImage);
+            BufferedImage colorized = colorizeDensityMap(
+                    densityImage, colorMap, minMax[0], minMax[1]);
+
+            if (colorized != null) {
+                g2d.setComposite(AlphaComposite.getInstance(
+                        AlphaComposite.SRC_OVER, opacity));
+                g2d.drawImage(colorized,
+                        0, 0, baseImage.getWidth(), baseImage.getHeight(), null);
+            }
+        }
+
+        // Paint object overlays with region offset
+        if (config.isIncludeAnnotations() || config.isIncludeDetections()) {
+            g2d.setComposite(AlphaComposite.getInstance(
+                    AlphaComposite.SRC_OVER, 1.0f));
+            paintObjectsInRegion(g2d, imageData, downsample, x, y, w, h,
+                    config.isIncludeAnnotations(), config.isIncludeDetections(),
+                    config.isFillAnnotations(), config.isShowNames());
+        }
+
+        // Scale bar
+        maybeDrawScaleBar(g2d, imageData, config,
+                baseImage.getWidth(), baseImage.getHeight());
+
+        // Color scale bar for density map mode
+        if (densityServer != null && config.isShowColorScaleBar()) {
+            ColorMaps.ColorMap colorMap = resolveColorMap(config.getColormapName());
+            // Re-read density for min/max (already cached in memory)
+            RegionRequest densityRequest = RegionRequest.createInstance(
+                    densityServer.getPath(), downsample, x, y, w, h);
+            BufferedImage densityImage = densityServer.readRegion(densityRequest);
+            double[] minMax = computeMinMax(densityImage);
+            maybeDrawColorScaleBar(g2d, config, colorMap, minMax[0], minMax[1],
+                    baseImage.getWidth(), baseImage.getHeight());
+        }
+
+        g2d.dispose();
+        return result;
+    }
+
+    /**
+     * Paint object overlays onto a graphics context for a specific region.
+     * The graphics origin is translated so objects are drawn at the correct offset.
+     */
+    private static void paintObjectsInRegion(Graphics2D g2d,
+                                              ImageData<BufferedImage> imageData,
+                                              double downsample,
+                                              int regionX, int regionY,
+                                              int regionW, int regionH,
+                                              boolean showAnnotations,
+                                              boolean showDetections,
+                                              boolean fillAnnotations,
+                                              boolean showNames) {
+        try {
+            var overlayOptions = new OverlayOptions();
+            overlayOptions.setShowAnnotations(showAnnotations);
+            overlayOptions.setShowDetections(showDetections);
+            overlayOptions.setFillAnnotations(fillAnnotations);
+            overlayOptions.setShowNames(showNames);
+            var hierarchyOverlay = new HierarchyOverlay(null, overlayOptions, imageData);
+
+            var gCopy = (Graphics2D) g2d.create();
+            gCopy.scale(1.0 / downsample, 1.0 / downsample);
+            gCopy.translate(-regionX, -regionY);
+
+            var region = ImageRegion.createInstance(
+                    regionX, regionY, regionW, regionH, 0, 0);
+
+            hierarchyOverlay.paintOverlay(gCopy, region, downsample, imageData, true);
+            gCopy.dispose();
+        } catch (Exception e) {
+            logger.warn("Failed to paint objects in region: {}", e.getMessage());
+        }
+    }
+
+    /**
      * Renders a preview of the current image with the given config.
      * Returns a BufferedImage sized to fit within {@code maxDimension} on its longest side.
      *
@@ -192,39 +472,45 @@ public class RenderedImageExporter {
         int serverW = baseServer.getWidth();
         int serverH = baseServer.getHeight();
 
+        // For per-annotation mode, find the first matching annotation and preview its region
+        if (config.getRegionType() == RenderedExportConfig.RegionType.ALL_ANNOTATIONS) {
+            PathObject firstAnnotation = findFirstMatchingAnnotation(imageData, config);
+            if (firstAnnotation != null && firstAnnotation.getROI() != null) {
+                ROI roi = firstAnnotation.getROI();
+                int x = (int) roi.getBoundsX();
+                int y = (int) roi.getBoundsY();
+                int w = (int) Math.ceil(roi.getBoundsWidth());
+                int h = (int) Math.ceil(roi.getBoundsHeight());
+                int padding = config.getPaddingPixels();
+                if (padding > 0) {
+                    x -= padding;
+                    y -= padding;
+                    w += 2 * padding;
+                    h += 2 * padding;
+                }
+                x = Math.max(0, x);
+                y = Math.max(0, y);
+                w = Math.min(w, serverW - x);
+                h = Math.min(h, serverH - y);
+
+                if (w > 0 && h > 0) {
+                    double longestSide = Math.max(w, h);
+                    double previewDownsample = Math.max(config.getDownsample(),
+                            longestSide / maxDimension);
+                    RenderedExportConfig previewConfig = buildPreviewConfig(config, previewDownsample);
+                    return renderRegionPreview(imageData, baseServer, classifier,
+                            densityBuilder, previewConfig, x, y, w, h);
+                }
+            }
+            // Fall through to whole-image preview if no annotation found
+        }
+
         // Compute downsample to fit within maxDimension
         double longestSide = Math.max(serverW, serverH);
         double previewDownsample = Math.max(config.getDownsample(),
                 longestSide / maxDimension);
 
-        // Build a temporary config with the preview downsample
-        // (reuse all other settings from the original config)
-        RenderedExportConfig previewConfig = new RenderedExportConfig.Builder()
-                .renderMode(config.getRenderMode())
-                .displaySettingsMode(config.getDisplaySettingsMode())
-                .capturedDisplaySettings(config.getCapturedDisplaySettings())
-                .displayPresetName(config.getDisplayPresetName())
-                .classifierName(config.getClassifierName())
-                .overlayOpacity(config.getOverlayOpacity())
-                .downsample(previewDownsample)
-                .format(config.getFormat())
-                .outputDirectory(config.getOutputDirectory())
-                .includeAnnotations(config.isIncludeAnnotations())
-                .includeDetections(config.isIncludeDetections())
-                .fillAnnotations(config.isFillAnnotations())
-                .showNames(config.isShowNames())
-                .showScaleBar(config.isShowScaleBar())
-                .scaleBarPosition(config.getScaleBarPosition())
-                .scaleBarColorHex(config.getScaleBarColorHex())
-                .scaleBarFontSize(config.getScaleBarFontSize())
-                .scaleBarBoldText(config.isScaleBarBoldText())
-                .densityMapName(config.getDensityMapName())
-                .colormapName(config.getColormapName())
-                .showColorScaleBar(config.isShowColorScaleBar())
-                .colorScaleBarPosition(config.getColorScaleBarPosition())
-                .colorScaleBarFontSize(config.getColorScaleBarFontSize())
-                .colorScaleBarBoldText(config.isColorScaleBarBoldText())
-                .build();
+        RenderedExportConfig previewConfig = buildPreviewConfig(config, previewDownsample);
 
         ImageServer<BufferedImage> displayServer = null;
         PixelClassificationImageServer classificationServer = null;
@@ -259,6 +545,101 @@ public class RenderedImageExporter {
                     throw new IOException("Failed to render object overlay preview", e);
                 }
             }
+        } finally {
+            closeQuietly(displayServer, "preview");
+            closeQuietly(classificationServer, "preview");
+            closeQuietly(densityServer, "preview");
+        }
+    }
+
+    /**
+     * Build a preview config with the specified downsample, copying all other settings.
+     */
+    private static RenderedExportConfig buildPreviewConfig(RenderedExportConfig config,
+                                                            double previewDownsample) {
+        return new RenderedExportConfig.Builder()
+                .regionType(config.getRegionType())
+                .selectedClassifications(config.getSelectedClassifications())
+                .paddingPixels(config.getPaddingPixels())
+                .renderMode(config.getRenderMode())
+                .displaySettingsMode(config.getDisplaySettingsMode())
+                .capturedDisplaySettings(config.getCapturedDisplaySettings())
+                .displayPresetName(config.getDisplayPresetName())
+                .classifierName(config.getClassifierName())
+                .overlayOpacity(config.getOverlayOpacity())
+                .downsample(previewDownsample)
+                .format(config.getFormat())
+                .outputDirectory(config.getOutputDirectory())
+                .includeAnnotations(config.isIncludeAnnotations())
+                .includeDetections(config.isIncludeDetections())
+                .fillAnnotations(config.isFillAnnotations())
+                .showNames(config.isShowNames())
+                .showScaleBar(config.isShowScaleBar())
+                .scaleBarPosition(config.getScaleBarPosition())
+                .scaleBarColorHex(config.getScaleBarColorHex())
+                .scaleBarFontSize(config.getScaleBarFontSize())
+                .scaleBarBoldText(config.isScaleBarBoldText())
+                .densityMapName(config.getDensityMapName())
+                .colormapName(config.getColormapName())
+                .showColorScaleBar(config.isShowColorScaleBar())
+                .colorScaleBarPosition(config.getColorScaleBarPosition())
+                .colorScaleBarFontSize(config.getColorScaleBarFontSize())
+                .colorScaleBarBoldText(config.isColorScaleBarBoldText())
+                .build();
+    }
+
+    /**
+     * Find the first annotation matching the classification filter.
+     */
+    private static PathObject findFirstMatchingAnnotation(ImageData<BufferedImage> imageData,
+                                                           RenderedExportConfig config) {
+        var annotations = imageData.getHierarchy().getAnnotationObjects();
+        var selectedClasses = config.getSelectedClassifications();
+        if (selectedClasses != null) {
+            Set<String> classSet = Set.copyOf(selectedClasses);
+            for (var a : annotations) {
+                PathClass pc = a.getPathClass();
+                String name = (pc == null || pc == PathClass.NULL_CLASS)
+                        ? "Unclassified" : pc.toString();
+                if (classSet.contains(name)) return a;
+            }
+            return null;
+        }
+        return annotations.isEmpty() ? null : annotations.iterator().next();
+    }
+
+    /**
+     * Render a preview of a specific region using the renderRegion helper.
+     */
+    private static BufferedImage renderRegionPreview(
+            ImageData<BufferedImage> imageData,
+            ImageServer<BufferedImage> baseServer,
+            PixelClassifier classifier,
+            DensityMapBuilder densityBuilder,
+            RenderedExportConfig config,
+            int x, int y, int w, int h) throws IOException {
+
+        PixelClassificationImageServer classificationServer = null;
+        ImageServer<BufferedImage> displayServer = null;
+        ImageServer<BufferedImage> densityServer = null;
+
+        try {
+            displayServer = resolveDisplayServer(imageData, baseServer, config);
+
+            if (config.getRenderMode() == RenderedExportConfig.RenderMode.CLASSIFIER_OVERLAY
+                    && classifier != null) {
+                classificationServer = new PixelClassificationImageServer(imageData, classifier);
+            } else if (config.getRenderMode() == RenderedExportConfig.RenderMode.DENSITY_MAP_OVERLAY
+                    && densityBuilder != null) {
+                densityServer = densityBuilder.buildServer(imageData);
+            }
+
+            return renderRegion(imageData, baseServer,
+                    classificationServer, densityServer, displayServer,
+                    config, x, y, w, h);
+
+        } catch (Exception e) {
+            throw new IOException("Failed to render per-annotation preview", e);
         } finally {
             closeQuietly(displayServer, "preview");
             closeQuietly(classificationServer, "preview");

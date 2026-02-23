@@ -83,6 +83,14 @@ public class QuietPreferences {
     private static final BooleanProperty renderedScaleBarBold =
             PathPrefs.createPersistentPreference(PREFIX + "rendered.scaleBarBold", true);
 
+    // --- Rendered region type preferences ---
+
+    private static final StringProperty renderedRegionType =
+            PathPrefs.createPersistentPreference(PREFIX + "rendered.regionType", "WHOLE_IMAGE");
+
+    private static final IntegerProperty renderedPadding =
+            PathPrefs.createPersistentPreference(PREFIX + "rendered.padding", 0);
+
     // --- Rendered density map preferences ---
 
     private static final StringProperty renderedDensityMapName =
@@ -275,6 +283,16 @@ public class QuietPreferences {
     public static BooleanProperty renderedScaleBarBoldProperty() { return renderedScaleBarBold; }
     public static boolean isRenderedScaleBarBold() { return renderedScaleBarBold.get(); }
     public static void setRenderedScaleBarBold(boolean value) { renderedScaleBarBold.set(value); }
+
+    // --- Region type ---
+
+    public static StringProperty renderedRegionTypeProperty() { return renderedRegionType; }
+    public static String getRenderedRegionType() { return renderedRegionType.get(); }
+    public static void setRenderedRegionType(String value) { renderedRegionType.set(value != null ? value : "WHOLE_IMAGE"); }
+
+    public static IntegerProperty renderedPaddingProperty() { return renderedPadding; }
+    public static int getRenderedPadding() { return renderedPadding.get(); }
+    public static void setRenderedPadding(int value) { renderedPadding.set(value); }
 
     // --- Density map ---
 
