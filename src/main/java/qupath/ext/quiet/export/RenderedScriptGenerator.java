@@ -19,10 +19,11 @@ class RenderedScriptGenerator {
     }
 
     static String generate(RenderedExportConfig config) {
-        if (config.getRenderMode() == RenderedExportConfig.RenderMode.OBJECT_OVERLAY) {
-            return generateObjectOverlayScript(config);
-        }
-        return generateClassifierScript(config);
+        return switch (config.getRenderMode()) {
+            case OBJECT_OVERLAY -> generateObjectOverlayScript(config);
+            case DENSITY_MAP_OVERLAY -> generateDensityMapScript(config);
+            case CLASSIFIER_OVERLAY -> generateClassifierScript(config);
+        };
     }
 
     /**
@@ -203,6 +204,355 @@ class RenderedScriptGenerator {
         }
         appendLine(sb, "        def readServer = ChannelDisplayTransformServer.createColorTransformServer(");
         appendLine(sb, "                baseServer, display.selectedChannels())");
+    }
+
+    // ------------------------------------------------------------------
+    // Color scale bar helpers
+    // ------------------------------------------------------------------
+
+    /**
+     * Emit color scale bar configuration variables.
+     */
+    private static void emitColorScaleBarConfig(StringBuilder sb, RenderedExportConfig config) {
+        appendLine(sb, "def showColorScaleBar = " + config.isShowColorScaleBar());
+        appendLine(sb, "def colorScaleBarPosition = " + quote(config.getColorScaleBarPosition().name()));
+        appendLine(sb, "def colorScaleBarFontSize = " + config.getColorScaleBarFontSize());
+        appendLine(sb, "def colorScaleBarBoldText = " + config.isColorScaleBarBoldText());
+    }
+
+    /**
+     * Emit a self-contained drawColorScaleBar Groovy function.
+     * Draws a vertical gradient bar with tick labels using the colorMap.
+     */
+    private static void emitColorScaleBarFunction(StringBuilder sb) {
+        appendLine(sb, "// Color scale bar drawing function");
+        appendLine(sb, "def drawColorScaleBar(Graphics2D g2d, int imgW, int imgH, colorMap, double minVal, double maxVal, String pos, int fSize, boolean bold) {");
+        appendLine(sb, "    if (imgW <= 0 || imgH <= 0) return");
+        appendLine(sb, "    int minDim = Math.min(imgW, imgH)");
+        appendLine(sb, "    int fontSize = fSize > 0 ? Math.max(4, Math.min(fSize, 200)) : Math.max(12, minDim / 50)");
+        appendLine(sb, "    int margin = Math.max(10, minDim / 40)");
+        appendLine(sb, "    int barH = Math.min(imgH / 4, Math.max(60, imgH / 4))");
+        appendLine(sb, "    int barW = Math.max(10, barH / 6)");
+        appendLine(sb, "    int fontStyle = bold ? Font.BOLD : Font.PLAIN");
+        appendLine(sb, "    g2d.setFont(new Font(Font.SANS_SERIF, fontStyle, fontSize))");
+        appendLine(sb, "    def fm = g2d.getFontMetrics()");
+        appendLine(sb, "    int tickCount = 5");
+        appendLine(sb, "    def tickLabels = []");
+        appendLine(sb, "    int maxLabelW = 0");
+        appendLine(sb, "    for (int i = 0; i < tickCount; i++) {");
+        appendLine(sb, "        double t = (double) i / (tickCount - 1)");
+        appendLine(sb, "        double v = minVal + t * (maxVal - minVal)");
+        appendLine(sb, "        String lbl = (v == 0) ? '0' : (Math.abs(v) >= 1 && v == Math.floor(v) ? String.format('%d', (long)v) : (Math.abs(v) < 0.01 ? String.format('%.1e', v) : String.format('%.2f', v)))");
+        appendLine(sb, "        tickLabels.add(lbl)");
+        appendLine(sb, "        maxLabelW = Math.max(maxLabelW, fm.stringWidth(lbl))");
+        appendLine(sb, "    }");
+        appendLine(sb, "    int tickLen = 4");
+        appendLine(sb, "    int labelGap = 4");
+        appendLine(sb, "    int totalW = barW + tickLen + labelGap + maxLabelW");
+        appendLine(sb, "    int th = fm.getAscent()");
+        appendLine(sb, "    int bx, by");
+        appendLine(sb, "    switch (pos) {");
+        appendLine(sb, "        case 'LOWER_LEFT': bx = margin; by = imgH - margin - barH; break");
+        appendLine(sb, "        case 'UPPER_RIGHT': bx = imgW - margin - totalW; by = margin; break");
+        appendLine(sb, "        case 'UPPER_LEFT': bx = margin; by = margin; break");
+        appendLine(sb, "        default: bx = imgW - margin - totalW; by = imgH - margin - barH; break");
+        appendLine(sb, "    }");
+        appendLine(sb, "    double range = maxVal - minVal");
+        appendLine(sb, "    for (int row = 0; row < barH; row++) {");
+        appendLine(sb, "        double t = 1.0 - (double) row / Math.max(1, barH - 1)");
+        appendLine(sb, "        double v = minVal + t * range");
+        appendLine(sb, "        int rgb = colorMap.getColor(v, minVal, maxVal)");
+        appendLine(sb, "        g2d.setColor(new Color(rgb))");
+        appendLine(sb, "        g2d.fillRect(bx, by + row, barW, 1)");
+        appendLine(sb, "    }");
+        appendLine(sb, "    g2d.setColor(Color.WHITE)");
+        appendLine(sb, "    g2d.drawRect(bx - 1, by - 1, barW + 1, barH + 1)");
+        appendLine(sb, "    for (int i = 0; i < tickCount; i++) {");
+        appendLine(sb, "        double t = (double) i / (tickCount - 1)");
+        appendLine(sb, "        int ty = by + barH - 1 - (int) Math.round(t * (barH - 1))");
+        appendLine(sb, "        g2d.setColor(Color.WHITE)");
+        appendLine(sb, "        g2d.drawLine(bx + barW, ty, bx + barW + tickLen, ty)");
+        appendLine(sb, "        int lx = bx + barW + tickLen + labelGap");
+        appendLine(sb, "        int ly = Math.max(by + th, Math.min(ty + th / 2 - 1, by + barH))");
+        appendLine(sb, "        def lbl = tickLabels[i]");
+        appendLine(sb, "        g2d.setColor(Color.BLACK)");
+        appendLine(sb, "        for (int dx = -1; dx <= 1; dx++) {");
+        appendLine(sb, "            for (int dy = -1; dy <= 1; dy++) {");
+        appendLine(sb, "                if (dx != 0 || dy != 0) g2d.drawString(lbl, lx + dx, ly + dy)");
+        appendLine(sb, "            }");
+        appendLine(sb, "        }");
+        appendLine(sb, "        g2d.setColor(Color.WHITE)");
+        appendLine(sb, "        g2d.drawString(lbl, lx, ly)");
+        appendLine(sb, "    }");
+        appendLine(sb, "}");
+        appendLine(sb, "");
+    }
+
+    /**
+     * Emit per-image color scale bar drawing code.
+     */
+    private static void emitColorScaleBarDrawing(StringBuilder sb) {
+        appendLine(sb, "        if (showColorScaleBar) {");
+        appendLine(sb, "            g2d.setComposite(java.awt.AlphaComposite.getInstance(java.awt.AlphaComposite.SRC_OVER, 1.0f))");
+        appendLine(sb, "            drawColorScaleBar(g2d, outW, outH, colorMap, densityMin, densityMax, colorScaleBarPosition, colorScaleBarFontSize, colorScaleBarBoldText)");
+        appendLine(sb, "        }");
+    }
+
+    /**
+     * Emit a self-contained colorizeDensityMap Groovy function.
+     */
+    private static void emitColorizeDensityMapFunction(StringBuilder sb) {
+        appendLine(sb, "// Colorize density map using color map");
+        appendLine(sb, "def colorizeDensityMap(BufferedImage densityImg, colorMap, double minV, double maxV) {");
+        appendLine(sb, "    int w = densityImg.getWidth()");
+        appendLine(sb, "    int h = densityImg.getHeight()");
+        appendLine(sb, "    def raster = densityImg.getRaster()");
+        appendLine(sb, "    def colorized = new BufferedImage(w, h, BufferedImage.TYPE_INT_ARGB)");
+        appendLine(sb, "    for (int y = 0; y < h; y++) {");
+        appendLine(sb, "        for (int x = 0; x < w; x++) {");
+        appendLine(sb, "            double val = raster.getSampleDouble(x, y, 0)");
+        appendLine(sb, "            if (Double.isNaN(val)) {");
+        appendLine(sb, "                colorized.setRGB(x, y, 0x00000000)");
+        appendLine(sb, "            } else {");
+        appendLine(sb, "                int rgb = colorMap.getColor(val, minV, maxV)");
+        appendLine(sb, "                colorized.setRGB(x, y, 0xFF000000 | (rgb & 0x00FFFFFF))");
+        appendLine(sb, "            }");
+        appendLine(sb, "        }");
+        appendLine(sb, "    }");
+        appendLine(sb, "    return colorized");
+        appendLine(sb, "}");
+        appendLine(sb, "");
+    }
+
+    // ------------------------------------------------------------------
+    // Density map script
+    // ------------------------------------------------------------------
+
+    private static String generateDensityMapScript(RenderedExportConfig config) {
+        var sb = new StringBuilder();
+        var displayMode = config.getDisplaySettingsMode();
+
+        appendLine(sb, "/**");
+        appendLine(sb, " * Density Map Overlay Export Script");
+        appendLine(sb, " * Generated by QuIET (QuPath Image Export Toolkit)");
+        appendLine(sb, " *");
+        appendLine(sb, " * Exports all project images with a density map overlay");
+        appendLine(sb, " * colorized using a LUT, at the specified downsample and opacity.");
+        appendLine(sb, " *");
+        appendLine(sb, " * Parameters below can be modified before re-running.");
+        appendLine(sb, " */");
+        appendLine(sb, "");
+
+        // Imports
+        appendLine(sb, "import qupath.lib.analysis.heatmaps.DensityMaps");
+        appendLine(sb, "import qupath.lib.color.ColorMaps");
+        appendLine(sb, "import qupath.lib.gui.viewer.OverlayOptions");
+        appendLine(sb, "import qupath.lib.gui.viewer.overlays.HierarchyOverlay");
+        appendLine(sb, "import qupath.lib.images.writers.ImageWriterTools");
+        appendLine(sb, "import qupath.lib.regions.RegionRequest");
+        appendLine(sb, "import java.awt.AlphaComposite");
+        appendLine(sb, "import java.awt.Color");
+        appendLine(sb, "import java.awt.Font");
+        appendLine(sb, "import java.awt.FontMetrics");
+        appendLine(sb, "import java.awt.Graphics2D");
+        appendLine(sb, "import java.awt.RenderingHints");
+        appendLine(sb, "import java.awt.image.BufferedImage");
+        emitDisplayImports(sb, displayMode);
+        if (config.isShowScaleBar()) {
+            emitScaleBarImports(sb);
+        }
+        appendLine(sb, "");
+
+        // Configuration parameters
+        appendLine(sb, "// ========== CONFIGURATION (modify as needed) ==========");
+        appendLine(sb, "def densityMapName = " + quote(config.getDensityMapName()));
+        appendLine(sb, "def colormapName = " + quote(config.getColormapName()));
+        emitDisplayConfig(sb, config);
+        appendLine(sb, "def overlayOpacity = " + config.getOverlayOpacity());
+        appendLine(sb, "def downsample = " + config.getDownsample());
+        appendLine(sb, "def outputFormat = " + quote(config.getFormat().getExtension()));
+        appendLine(sb, "def outputDir = " + quote(config.getOutputDirectory().getAbsolutePath()));
+        appendLine(sb, "def includeAnnotations = " + config.isIncludeAnnotations());
+        appendLine(sb, "def includeDetections = " + config.isIncludeDetections());
+        appendLine(sb, "def fillAnnotations = " + config.isFillAnnotations());
+        appendLine(sb, "def showNames = " + config.isShowNames());
+        emitScaleBarConfig(sb, config);
+        emitColorScaleBarConfig(sb, config);
+        appendLine(sb, "// =======================================================");
+        appendLine(sb, "");
+
+        // Project and density map loading
+        appendLine(sb, "def project = getProject()");
+        appendLine(sb, "if (project == null) {");
+        appendLine(sb, "    println 'ERROR: No project is open'");
+        appendLine(sb, "    return");
+        appendLine(sb, "}");
+        appendLine(sb, "");
+        appendLine(sb, "// Load density map builder from project resources");
+        appendLine(sb, "def densityResources = project.getResources(");
+        appendLine(sb, "        DensityMaps.PROJECT_LOCATION, DensityMaps.DensityMapBuilder.class, \"json\")");
+        appendLine(sb, "def densityBuilder = densityResources.get(densityMapName)");
+        appendLine(sb, "if (densityBuilder == null) {");
+        appendLine(sb, "    println \"ERROR: Density map not found: ${densityMapName}\"");
+        appendLine(sb, "    return");
+        appendLine(sb, "}");
+        appendLine(sb, "");
+        appendLine(sb, "// Resolve color map");
+        appendLine(sb, "def allMaps = ColorMaps.getColorMaps()");
+        appendLine(sb, "def colorMap = allMaps.get(colormapName)");
+        appendLine(sb, "if (colorMap == null) {");
+        appendLine(sb, "    // Case-insensitive fallback");
+        appendLine(sb, "    colorMap = allMaps.find { it.key.equalsIgnoreCase(colormapName) }?.value");
+        appendLine(sb, "}");
+        appendLine(sb, "if (colorMap == null) {");
+        appendLine(sb, "    println \"WARNING: Colormap '${colormapName}' not found, using first available\"");
+        appendLine(sb, "    colorMap = allMaps.values().iterator().next()");
+        appendLine(sb, "}");
+        appendLine(sb, "");
+
+        // Display settings resolution
+        emitDisplaySetup(sb, displayMode);
+
+        // Output directory
+        appendLine(sb, "def outDir = new File(outputDir)");
+        appendLine(sb, "outDir.mkdirs()");
+        appendLine(sb, "");
+
+        // Helper functions (before the main loop)
+        emitColorizeDensityMapFunction(sb);
+        if (config.isShowScaleBar()) {
+            emitScaleBarFunction(sb);
+        }
+        if (config.isShowColorScaleBar()) {
+            emitColorScaleBarFunction(sb);
+        }
+
+        // Main processing loop
+        appendLine(sb, "def entries = project.getImageList()");
+        appendLine(sb, "println \"Processing ${entries.size()} images...\"");
+        appendLine(sb, "");
+        appendLine(sb, "int succeeded = 0");
+        appendLine(sb, "int failed = 0");
+        appendLine(sb, "");
+        appendLine(sb, "for (int i = 0; i < entries.size(); i++) {");
+        appendLine(sb, "    def entry = entries[i]");
+        appendLine(sb, "    def entryName = entry.getImageName()");
+        appendLine(sb, "    println \"[${i + 1}/${entries.size()}] Processing: ${entryName}\"");
+        appendLine(sb, "");
+        appendLine(sb, "    def densityServer = null");
+        appendLine(sb, "    try {");
+        appendLine(sb, "        def imageData = entry.readImageData()");
+        appendLine(sb, "        def baseServer = imageData.getServer()");
+        appendLine(sb, "");
+
+        // Display server wrapping
+        emitDisplayServerWrapping(sb, displayMode);
+        appendLine(sb, "");
+
+        appendLine(sb, "        densityServer = densityBuilder.buildServer(imageData)");
+        appendLine(sb, "");
+        appendLine(sb, "        int outW = (int) Math.ceil(baseServer.getWidth() / downsample)");
+        appendLine(sb, "        int outH = (int) Math.ceil(baseServer.getHeight() / downsample)");
+        appendLine(sb, "");
+        appendLine(sb, "        def request = RegionRequest.createInstance(");
+        appendLine(sb, "                readServer.getPath(), downsample,");
+        appendLine(sb, "                0, 0, readServer.getWidth(), readServer.getHeight())");
+        appendLine(sb, "        def baseImage = readServer.readRegion(request)");
+        appendLine(sb, "");
+        appendLine(sb, "        def densityRequest = RegionRequest.createInstance(");
+        appendLine(sb, "                densityServer.getPath(), downsample,");
+        appendLine(sb, "                0, 0, densityServer.getWidth(), densityServer.getHeight())");
+        appendLine(sb, "        def densityImage = densityServer.readRegion(densityRequest)");
+        appendLine(sb, "");
+        appendLine(sb, "        // Compute min/max from density raster");
+        appendLine(sb, "        def raster = densityImage.getRaster()");
+        appendLine(sb, "        double densityMin = Double.MAX_VALUE");
+        appendLine(sb, "        double densityMax = -Double.MAX_VALUE");
+        appendLine(sb, "        for (int y = 0; y < raster.getHeight(); y++) {");
+        appendLine(sb, "            for (int x = 0; x < raster.getWidth(); x++) {");
+        appendLine(sb, "                double v = raster.getSampleDouble(x, y, 0)");
+        appendLine(sb, "                if (!Double.isNaN(v)) {");
+        appendLine(sb, "                    if (v < densityMin) densityMin = v");
+        appendLine(sb, "                    if (v > densityMax) densityMax = v");
+        appendLine(sb, "                }");
+        appendLine(sb, "            }");
+        appendLine(sb, "        }");
+        appendLine(sb, "        if (densityMin > densityMax) { densityMin = 0; densityMax = 1 }");
+        appendLine(sb, "");
+        appendLine(sb, "        def colorized = colorizeDensityMap(densityImage, colorMap, densityMin, densityMax)");
+        appendLine(sb, "");
+        appendLine(sb, "        def result = new BufferedImage(");
+        appendLine(sb, "                baseImage.getWidth(), baseImage.getHeight(),");
+        appendLine(sb, "                BufferedImage.TYPE_INT_RGB)");
+        appendLine(sb, "        def g2d = result.createGraphics()");
+        appendLine(sb, "        g2d.setRenderingHint(");
+        appendLine(sb, "                RenderingHints.KEY_INTERPOLATION,");
+        appendLine(sb, "                RenderingHints.VALUE_INTERPOLATION_BILINEAR)");
+        appendLine(sb, "");
+        appendLine(sb, "        g2d.drawImage(baseImage, 0, 0, null)");
+        appendLine(sb, "");
+        appendLine(sb, "        if (overlayOpacity > 0 && colorized != null) {");
+        appendLine(sb, "            g2d.setComposite(AlphaComposite.getInstance(");
+        appendLine(sb, "                    AlphaComposite.SRC_OVER, (float) overlayOpacity))");
+        appendLine(sb, "            g2d.drawImage(colorized,");
+        appendLine(sb, "                    0, 0, baseImage.getWidth(), baseImage.getHeight(), null)");
+        appendLine(sb, "        }");
+        appendLine(sb, "");
+        appendLine(sb, "        if (includeAnnotations || includeDetections) {");
+        appendLine(sb, "            g2d.setComposite(AlphaComposite.getInstance(");
+        appendLine(sb, "                    AlphaComposite.SRC_OVER, 1.0f))");
+        appendLine(sb, "            def overlayOptions = new OverlayOptions()");
+        appendLine(sb, "            overlayOptions.setShowAnnotations(includeAnnotations)");
+        appendLine(sb, "            overlayOptions.setShowDetections(includeDetections)");
+        appendLine(sb, "            overlayOptions.setFillAnnotations(fillAnnotations)");
+        appendLine(sb, "            overlayOptions.setShowNames(showNames)");
+        appendLine(sb, "            def hierOverlay = new HierarchyOverlay(null, overlayOptions, imageData)");
+        appendLine(sb, "            def gCopy = (Graphics2D) g2d.create()");
+        appendLine(sb, "            gCopy.scale(1.0 / downsample, 1.0 / downsample)");
+        appendLine(sb, "            def region = qupath.lib.regions.ImageRegion.createInstance(");
+        appendLine(sb, "                    0, 0, baseServer.getWidth(), baseServer.getHeight(), 0, 0)");
+        appendLine(sb, "            hierOverlay.paintOverlay(gCopy, region, downsample, imageData, true)");
+        appendLine(sb, "            gCopy.dispose()");
+        appendLine(sb, "        }");
+        appendLine(sb, "");
+
+        // Scale bar drawing
+        if (config.isShowScaleBar()) {
+            emitScaleBarDrawing(sb);
+            appendLine(sb, "");
+        }
+
+        // Color scale bar drawing
+        if (config.isShowColorScaleBar()) {
+            emitColorScaleBarDrawing(sb);
+            appendLine(sb, "");
+        }
+
+        appendLine(sb, "        g2d.dispose()");
+        appendLine(sb, "");
+        appendLine(sb, "        def sanitized = entryName.replaceAll('[^a-zA-Z0-9._\\\\-]', '_')");
+        appendLine(sb, "        def outputPath = new File(outDir, sanitized + '.' + outputFormat).getAbsolutePath()");
+        appendLine(sb, "        ImageWriterTools.writeImage(result, outputPath)");
+        appendLine(sb, "        println \"  OK: ${outputPath}\"");
+        appendLine(sb, "        succeeded++");
+        appendLine(sb, "");
+        appendLine(sb, "        densityServer.close()");
+        appendLine(sb, "        densityServer = null");
+        appendLine(sb, "        baseServer.close()");
+        appendLine(sb, "");
+        appendLine(sb, "    } catch (Exception e) {");
+        appendLine(sb, "        println \"  FAIL: ${e.getMessage()}\"");
+        appendLine(sb, "        failed++");
+        appendLine(sb, "        if (densityServer != null) {");
+        appendLine(sb, "            try { densityServer.close() } catch (Exception ignored) {}");
+        appendLine(sb, "        }");
+        appendLine(sb, "    }");
+        appendLine(sb, "}");
+        appendLine(sb, "");
+        appendLine(sb, "println ''");
+        appendLine(sb, "println \"Export complete: ${succeeded} succeeded, ${failed} failed\"");
+
+        return sb.toString();
     }
 
     private static String generateClassifierScript(RenderedExportConfig config) {

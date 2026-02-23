@@ -83,6 +83,26 @@ public class QuietPreferences {
     private static final BooleanProperty renderedScaleBarBold =
             PathPrefs.createPersistentPreference(PREFIX + "rendered.scaleBarBold", true);
 
+    // --- Rendered density map preferences ---
+
+    private static final StringProperty renderedDensityMapName =
+            PathPrefs.createPersistentPreference(PREFIX + "rendered.densityMapName", "");
+
+    private static final StringProperty renderedColormapName =
+            PathPrefs.createPersistentPreference(PREFIX + "rendered.colormapName", "Viridis");
+
+    private static final BooleanProperty renderedShowColorScaleBar =
+            PathPrefs.createPersistentPreference(PREFIX + "rendered.showColorScaleBar", false);
+
+    private static final StringProperty renderedColorScaleBarPosition =
+            PathPrefs.createPersistentPreference(PREFIX + "rendered.colorScaleBarPosition", "LOWER_RIGHT");
+
+    private static final IntegerProperty renderedColorScaleBarFontSize =
+            PathPrefs.createPersistentPreference(PREFIX + "rendered.colorScaleBarFontSize", 0);
+
+    private static final BooleanProperty renderedColorScaleBarBold =
+            PathPrefs.createPersistentPreference(PREFIX + "rendered.colorScaleBarBold", true);
+
     // --- Mask export preferences ---
 
     private static final StringProperty maskType =
@@ -255,6 +275,32 @@ public class QuietPreferences {
     public static BooleanProperty renderedScaleBarBoldProperty() { return renderedScaleBarBold; }
     public static boolean isRenderedScaleBarBold() { return renderedScaleBarBold.get(); }
     public static void setRenderedScaleBarBold(boolean value) { renderedScaleBarBold.set(value); }
+
+    // --- Density map ---
+
+    public static StringProperty renderedDensityMapNameProperty() { return renderedDensityMapName; }
+    public static String getRenderedDensityMapName() { return renderedDensityMapName.get(); }
+    public static void setRenderedDensityMapName(String value) { renderedDensityMapName.set(value != null ? value : ""); }
+
+    public static StringProperty renderedColormapNameProperty() { return renderedColormapName; }
+    public static String getRenderedColormapName() { return renderedColormapName.get(); }
+    public static void setRenderedColormapName(String value) { renderedColormapName.set(value != null ? value : "Viridis"); }
+
+    public static BooleanProperty renderedShowColorScaleBarProperty() { return renderedShowColorScaleBar; }
+    public static boolean isRenderedShowColorScaleBar() { return renderedShowColorScaleBar.get(); }
+    public static void setRenderedShowColorScaleBar(boolean value) { renderedShowColorScaleBar.set(value); }
+
+    public static StringProperty renderedColorScaleBarPositionProperty() { return renderedColorScaleBarPosition; }
+    public static String getRenderedColorScaleBarPosition() { return renderedColorScaleBarPosition.get(); }
+    public static void setRenderedColorScaleBarPosition(String value) { renderedColorScaleBarPosition.set(value != null ? value : "LOWER_RIGHT"); }
+
+    public static IntegerProperty renderedColorScaleBarFontSizeProperty() { return renderedColorScaleBarFontSize; }
+    public static int getRenderedColorScaleBarFontSize() { return renderedColorScaleBarFontSize.get(); }
+    public static void setRenderedColorScaleBarFontSize(int value) { renderedColorScaleBarFontSize.set(value); }
+
+    public static BooleanProperty renderedColorScaleBarBoldProperty() { return renderedColorScaleBarBold; }
+    public static boolean isRenderedColorScaleBarBold() { return renderedColorScaleBarBold.get(); }
+    public static void setRenderedColorScaleBarBold(boolean value) { renderedColorScaleBarBold.set(value); }
 
     // ==================== Mask ====================
 

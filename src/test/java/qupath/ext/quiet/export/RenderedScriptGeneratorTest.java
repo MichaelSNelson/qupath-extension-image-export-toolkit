@@ -225,4 +225,116 @@ class RenderedScriptGeneratorTest {
         assertEquals("\"say \\\"hi\\\"\"", ScriptGenerator.quote("say \"hi\""));
         assertEquals("\"C:\\\\path\\\\to\"", ScriptGenerator.quote("C:\\path\\to"));
     }
+
+    // --- Density map mode tests ---
+
+    @Test
+    void testDensityMapScriptContainsImports() {
+        RenderedExportConfig config = new RenderedExportConfig.Builder()
+                .renderMode(RenderedExportConfig.RenderMode.DENSITY_MAP_OVERLAY)
+                .densityMapName("cell_density")
+                .colormapName("Viridis")
+                .outputDirectory(tempDir)
+                .build();
+
+        String script = ScriptGenerator.generate(ExportCategory.RENDERED, config);
+
+        assertTrue(script.contains("import qupath.lib.analysis.heatmaps.DensityMaps"),
+                "Script should import DensityMaps");
+        assertTrue(script.contains("import qupath.lib.color.ColorMaps"),
+                "Script should import ColorMaps");
+    }
+
+    @Test
+    void testDensityMapScriptContainsColorizationLogic() {
+        RenderedExportConfig config = new RenderedExportConfig.Builder()
+                .renderMode(RenderedExportConfig.RenderMode.DENSITY_MAP_OVERLAY)
+                .densityMapName("cell_density")
+                .outputDirectory(tempDir)
+                .build();
+
+        String script = ScriptGenerator.generate(ExportCategory.RENDERED, config);
+
+        assertTrue(script.contains("colorizeDensityMap"),
+                "Script should contain colorizeDensityMap function");
+        assertTrue(script.contains("densityBuilder.buildServer"),
+                "Script should build density server per image");
+        assertTrue(script.contains("densityMin"),
+                "Script should compute min/max from density raster");
+    }
+
+    @Test
+    void testDensityMapScriptContainsConfigValues() {
+        RenderedExportConfig config = new RenderedExportConfig.Builder()
+                .renderMode(RenderedExportConfig.RenderMode.DENSITY_MAP_OVERLAY)
+                .densityMapName("my_density")
+                .colormapName("Magma")
+                .overlayOpacity(0.8)
+                .outputDirectory(tempDir)
+                .build();
+
+        String script = ScriptGenerator.generate(ExportCategory.RENDERED, config);
+
+        assertTrue(script.contains("\"my_density\""));
+        assertTrue(script.contains("\"Magma\""));
+        assertTrue(script.contains("0.8"));
+    }
+
+    @Test
+    void testColorScaleBarScriptFunction() {
+        RenderedExportConfig config = new RenderedExportConfig.Builder()
+                .renderMode(RenderedExportConfig.RenderMode.DENSITY_MAP_OVERLAY)
+                .densityMapName("test_dm")
+                .showColorScaleBar(true)
+                .colorScaleBarPosition(ScaleBarRenderer.Position.UPPER_LEFT)
+                .colorScaleBarFontSize(16)
+                .colorScaleBarBoldText(false)
+                .outputDirectory(tempDir)
+                .build();
+
+        String script = ScriptGenerator.generate(ExportCategory.RENDERED, config);
+
+        assertTrue(script.contains("drawColorScaleBar"),
+                "Script should contain drawColorScaleBar function");
+        assertTrue(script.contains("showColorScaleBar = true"),
+                "Script should set showColorScaleBar");
+        assertTrue(script.contains("colorScaleBarFontSize = 16"),
+                "Script should set font size");
+        assertTrue(script.contains("colorScaleBarBoldText = false"),
+                "Script should set bold text");
+    }
+
+    @Test
+    void testDensityMapScriptExcludesClassifier() {
+        RenderedExportConfig config = new RenderedExportConfig.Builder()
+                .renderMode(RenderedExportConfig.RenderMode.DENSITY_MAP_OVERLAY)
+                .densityMapName("test_dm")
+                .outputDirectory(tempDir)
+                .build();
+
+        String script = ScriptGenerator.generate(ExportCategory.RENDERED, config);
+
+        assertFalse(script.contains("PixelClassificationImageServer"),
+                "Density map script should not reference PixelClassificationImageServer");
+        assertFalse(script.contains("classifierName"),
+                "Density map script should not reference classifierName");
+    }
+
+    @Test
+    void testDensityMapScriptIsAsciiOnly() {
+        RenderedExportConfig config = new RenderedExportConfig.Builder()
+                .renderMode(RenderedExportConfig.RenderMode.DENSITY_MAP_OVERLAY)
+                .densityMapName("test_dm")
+                .showColorScaleBar(true)
+                .outputDirectory(tempDir)
+                .build();
+
+        String script = ScriptGenerator.generate(ExportCategory.RENDERED, config);
+        for (int i = 0; i < script.length(); i++) {
+            char c = script.charAt(i);
+            assertTrue(c < 128,
+                    "Non-ASCII character found at index " + i + ": U+" +
+                    String.format("%04X", (int) c) + " '" + c + "'");
+        }
+    }
 }

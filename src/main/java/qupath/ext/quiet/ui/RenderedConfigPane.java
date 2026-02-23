@@ -40,7 +40,10 @@ import qupath.ext.quiet.export.RenderedExportConfig.DisplaySettingsMode;
 import qupath.ext.quiet.export.RenderedImageExporter;
 import qupath.ext.quiet.export.ScaleBarRenderer;
 import qupath.ext.quiet.preferences.QuietPreferences;
+import qupath.lib.analysis.heatmaps.DensityMaps;
+import qupath.lib.analysis.heatmaps.DensityMaps.DensityMapBuilder;
 import qupath.lib.classifiers.pixel.PixelClassifier;
+import qupath.lib.color.ColorMaps;
 import qupath.lib.display.settings.DisplaySettingUtils;
 import qupath.lib.display.settings.ImageDisplaySettings;
 import qupath.lib.gui.QuPathGUI;
@@ -76,6 +79,21 @@ public class RenderedConfigPane extends GridPane {
     private CheckBox scaleBarBoldCheck;
     private Button previewButton;
 
+    // Density map controls
+    private ComboBox<String> densityMapCombo;
+    private Label densityMapLabel;
+    private HBox densityMapBox;
+    private ComboBox<String> colormapCombo;
+    private Label colormapLabel;
+
+    // Color scale bar controls
+    private CheckBox showColorScaleBarCheck;
+    private ComboBox<ScaleBarRenderer.Position> colorScaleBarPositionCombo;
+    private Label colorScaleBarPositionLabel;
+    private Spinner<Integer> colorScaleBarFontSizeSpinner;
+    private Label colorScaleBarFontSizeLabel;
+    private CheckBox colorScaleBarBoldCheck;
+
     // Controls needing visibility toggling
     private Label classifierLabel;
     private HBox classifierBox;
@@ -93,6 +111,7 @@ public class RenderedConfigPane extends GridPane {
         buildUI();
         populateClassifiers();
         populatePresets();
+        populateDensityMaps();
         restorePreferences();
     }
 
@@ -113,9 +132,11 @@ public class RenderedConfigPane extends GridPane {
             @Override
             public String toString(RenderedExportConfig.RenderMode mode) {
                 if (mode == null) return "";
-                return mode == RenderedExportConfig.RenderMode.CLASSIFIER_OVERLAY
-                        ? resources.getString("rendered.mode.classifier")
-                        : resources.getString("rendered.mode.object");
+                return switch (mode) {
+                    case CLASSIFIER_OVERLAY -> resources.getString("rendered.mode.classifier");
+                    case OBJECT_OVERLAY -> resources.getString("rendered.mode.object");
+                    case DENSITY_MAP_OVERLAY -> resources.getString("rendered.mode.densityMap");
+                };
             }
             @Override
             public RenderedExportConfig.RenderMode fromString(String s) {
@@ -331,6 +352,87 @@ public class RenderedConfigPane extends GridPane {
         add(scaleBarBoldCheck, 1, row);
         row++;
 
+        // Density map selector (density map mode only)
+        densityMapLabel = new Label(resources.getString("rendered.label.densityMap"));
+        add(densityMapLabel, 0, row);
+        densityMapCombo = new ComboBox<>();
+        densityMapCombo.setMaxWidth(Double.MAX_VALUE);
+        GridPane.setHgrow(densityMapCombo, Priority.ALWAYS);
+        var dmRefreshButton = new Button(resources.getString("button.refresh"));
+        dmRefreshButton.setOnAction(e -> populateDensityMaps());
+        densityMapBox = new HBox(5, densityMapCombo, dmRefreshButton);
+        HBox.setHgrow(densityMapCombo, Priority.ALWAYS);
+        add(densityMapBox, 1, row);
+        row++;
+
+        // Colormap/LUT selector (density map mode only)
+        colormapLabel = new Label(resources.getString("rendered.label.colormap"));
+        add(colormapLabel, 0, row);
+        colormapCombo = new ComboBox<>();
+        colormapCombo.getItems().addAll(ColorMaps.getColorMaps().keySet());
+        colormapCombo.setValue("Viridis");
+        add(colormapCombo, 1, row);
+        row++;
+
+        // Color scale bar options
+        showColorScaleBarCheck = new CheckBox(resources.getString("rendered.label.showColorScaleBar"));
+        add(showColorScaleBarCheck, 1, row);
+        row++;
+
+        colorScaleBarPositionLabel = new Label(resources.getString("rendered.label.colorScaleBarPosition"));
+        add(colorScaleBarPositionLabel, 0, row);
+        colorScaleBarPositionCombo = new ComboBox<>(FXCollections.observableArrayList(
+                ScaleBarRenderer.Position.values()));
+        colorScaleBarPositionCombo.setValue(ScaleBarRenderer.Position.LOWER_RIGHT);
+        colorScaleBarPositionCombo.setConverter(new StringConverter<>() {
+            @Override
+            public String toString(ScaleBarRenderer.Position pos) {
+                if (pos == null) return "";
+                return switch (pos) {
+                    case LOWER_RIGHT -> resources.getString("rendered.scaleBar.lowerRight");
+                    case LOWER_LEFT -> resources.getString("rendered.scaleBar.lowerLeft");
+                    case UPPER_RIGHT -> resources.getString("rendered.scaleBar.upperRight");
+                    case UPPER_LEFT -> resources.getString("rendered.scaleBar.upperLeft");
+                };
+            }
+            @Override
+            public ScaleBarRenderer.Position fromString(String s) {
+                return ScaleBarRenderer.Position.LOWER_RIGHT;
+            }
+        });
+        add(colorScaleBarPositionCombo, 1, row);
+        row++;
+
+        colorScaleBarFontSizeLabel = new Label(resources.getString("rendered.label.colorScaleBarFontSize"));
+        add(colorScaleBarFontSizeLabel, 0, row);
+        var csFontSizeFactory = new SpinnerValueFactory.IntegerSpinnerValueFactory(0, 72, 0);
+        csFontSizeFactory.setConverter(new StringConverter<>() {
+            @Override
+            public String toString(Integer value) {
+                if (value == null || value == 0)
+                    return resources.getString("rendered.scaleBar.fontSizeAuto");
+                return String.valueOf(value);
+            }
+            @Override
+            public Integer fromString(String string) {
+                if (string == null || string.isBlank()
+                        || string.equalsIgnoreCase(resources.getString("rendered.scaleBar.fontSizeAuto"))) {
+                    return 0;
+                }
+                try { return Integer.parseInt(string); }
+                catch (NumberFormatException e) { return 0; }
+            }
+        });
+        colorScaleBarFontSizeSpinner = new Spinner<>(csFontSizeFactory);
+        colorScaleBarFontSizeSpinner.setEditable(true);
+        add(colorScaleBarFontSizeSpinner, 1, row);
+        row++;
+
+        colorScaleBarBoldCheck = new CheckBox(resources.getString("rendered.label.colorScaleBarBold"));
+        colorScaleBarBoldCheck.setSelected(true);
+        add(colorScaleBarBoldCheck, 1, row);
+        row++;
+
         // Preview button
         previewButton = new Button(resources.getString("rendered.label.previewImage"));
         previewButton.setOnAction(e -> handlePreview());
@@ -342,6 +444,11 @@ public class RenderedConfigPane extends GridPane {
         showScaleBarCheck.selectedProperty().addListener(
                 (obs, oldVal, newVal) -> updateScaleBarVisibility(newVal));
         updateScaleBarVisibility(false);
+
+        // Color scale bar visibility toggling
+        showColorScaleBarCheck.selectedProperty().addListener(
+                (obs, oldVal, newVal) -> updateColorScaleBarVisibility(newVal));
+        updateColorScaleBarVisibility(false);
 
         // Preview button enabled state depends on image being open
         updatePreviewButtonState();
@@ -355,11 +462,30 @@ public class RenderedConfigPane extends GridPane {
 
     private void updateModeVisibility(RenderedExportConfig.RenderMode mode) {
         boolean isClassifier = (mode == RenderedExportConfig.RenderMode.CLASSIFIER_OVERLAY);
+        boolean isDensityMap = (mode == RenderedExportConfig.RenderMode.DENSITY_MAP_OVERLAY);
 
         classifierLabel.setVisible(isClassifier);
         classifierLabel.setManaged(isClassifier);
         classifierBox.setVisible(isClassifier);
         classifierBox.setManaged(isClassifier);
+
+        densityMapLabel.setVisible(isDensityMap);
+        densityMapLabel.setManaged(isDensityMap);
+        densityMapBox.setVisible(isDensityMap);
+        densityMapBox.setManaged(isDensityMap);
+        colormapLabel.setVisible(isDensityMap);
+        colormapLabel.setManaged(isDensityMap);
+        colormapCombo.setVisible(isDensityMap);
+        colormapCombo.setManaged(isDensityMap);
+
+        // Color scale bar only makes sense for density map mode
+        showColorScaleBarCheck.setVisible(isDensityMap);
+        showColorScaleBarCheck.setManaged(isDensityMap);
+        if (!isDensityMap) {
+            updateColorScaleBarVisibility(false);
+        } else {
+            updateColorScaleBarVisibility(showColorScaleBarCheck.isSelected());
+        }
     }
 
     private void updateDisplaySettingsVisibility(DisplaySettingsMode mode) {
@@ -387,6 +513,19 @@ public class RenderedConfigPane extends GridPane {
         scaleBarBoldCheck.setManaged(showScaleBar);
     }
 
+    private void updateColorScaleBarVisibility(boolean show) {
+        colorScaleBarPositionLabel.setVisible(show);
+        colorScaleBarPositionLabel.setManaged(show);
+        colorScaleBarPositionCombo.setVisible(show);
+        colorScaleBarPositionCombo.setManaged(show);
+        colorScaleBarFontSizeLabel.setVisible(show);
+        colorScaleBarFontSizeLabel.setManaged(show);
+        colorScaleBarFontSizeSpinner.setVisible(show);
+        colorScaleBarFontSizeSpinner.setManaged(show);
+        colorScaleBarBoldCheck.setVisible(show);
+        colorScaleBarBoldCheck.setManaged(show);
+    }
+
     private void updatePreviewButtonState() {
         boolean hasImage = qupath.getViewer() != null
                 && qupath.getViewer().getImageData() != null;
@@ -411,6 +550,12 @@ public class RenderedConfigPane extends GridPane {
         scaleBarFontSizeSpinner.setTooltip(createTooltip("tooltip.rendered.scaleBarFontSize"));
         scaleBarBoldCheck.setTooltip(createTooltip("tooltip.rendered.scaleBarBold"));
         previewButton.setTooltip(createTooltip("tooltip.rendered.previewImage"));
+        densityMapCombo.setTooltip(createTooltip("tooltip.rendered.densityMap"));
+        colormapCombo.setTooltip(createTooltip("tooltip.rendered.colormap"));
+        showColorScaleBarCheck.setTooltip(createTooltip("tooltip.rendered.showColorScaleBar"));
+        colorScaleBarPositionCombo.setTooltip(createTooltip("tooltip.rendered.colorScaleBarPosition"));
+        colorScaleBarFontSizeSpinner.setTooltip(createTooltip("tooltip.rendered.colorScaleBarFontSize"));
+        colorScaleBarBoldCheck.setTooltip(createTooltip("tooltip.rendered.colorScaleBarBold"));
     }
 
     private static Tooltip createTooltip(String key) {
@@ -462,6 +607,28 @@ public class RenderedConfigPane extends GridPane {
         }
     }
 
+    private void populateDensityMaps() {
+        densityMapCombo.getItems().clear();
+        var project = qupath.getProject();
+        if (project == null) return;
+        try {
+            var resources = project.getResources(
+                    DensityMaps.PROJECT_LOCATION, DensityMapBuilder.class, "json");
+            var names = resources.getNames();
+            densityMapCombo.getItems().addAll(names);
+            if (!names.isEmpty()) {
+                String saved = QuietPreferences.getRenderedDensityMapName();
+                if (saved != null && names.contains(saved)) {
+                    densityMapCombo.setValue(saved);
+                } else {
+                    densityMapCombo.getSelectionModel().selectFirst();
+                }
+            }
+        } catch (IOException e) {
+            logger.error("Failed to load density map names", e);
+        }
+    }
+
     private void restorePreferences() {
         String savedMode = QuietPreferences.getRenderedMode();
         try {
@@ -503,6 +670,22 @@ public class RenderedConfigPane extends GridPane {
         scaleBarBoldCheck.setSelected(QuietPreferences.isRenderedScaleBarBold());
 
         updateScaleBarVisibility(showScaleBarCheck.isSelected());
+
+        // Density map preferences
+        String savedColormap = QuietPreferences.getRenderedColormapName();
+        if (savedColormap != null && !savedColormap.isBlank()) {
+            colormapCombo.setValue(savedColormap);
+        }
+
+        // Color scale bar preferences
+        showColorScaleBarCheck.setSelected(QuietPreferences.isRenderedShowColorScaleBar());
+        try {
+            colorScaleBarPositionCombo.setValue(
+                    ScaleBarRenderer.Position.valueOf(QuietPreferences.getRenderedColorScaleBarPosition()));
+        } catch (IllegalArgumentException e) { /* keep default */ }
+        colorScaleBarFontSizeSpinner.getValueFactory().setValue(QuietPreferences.getRenderedColorScaleBarFontSize());
+        colorScaleBarBoldCheck.setSelected(QuietPreferences.isRenderedColorScaleBarBold());
+        updateColorScaleBarVisibility(showColorScaleBarCheck.isSelected());
     }
 
     /**
@@ -533,6 +716,16 @@ public class RenderedConfigPane extends GridPane {
         QuietPreferences.setRenderedScaleBarFontSize(
                 scaleBarFontSizeSpinner.getValue() != null ? scaleBarFontSizeSpinner.getValue() : 0);
         QuietPreferences.setRenderedScaleBarBold(scaleBarBoldCheck.isSelected());
+        var densityMap = densityMapCombo.getValue();
+        if (densityMap != null) QuietPreferences.setRenderedDensityMapName(densityMap);
+        var colormap = colormapCombo.getValue();
+        if (colormap != null) QuietPreferences.setRenderedColormapName(colormap);
+        QuietPreferences.setRenderedShowColorScaleBar(showColorScaleBarCheck.isSelected());
+        var csPos = colorScaleBarPositionCombo.getValue();
+        if (csPos != null) QuietPreferences.setRenderedColorScaleBarPosition(csPos.name());
+        QuietPreferences.setRenderedColorScaleBarFontSize(
+                colorScaleBarFontSizeSpinner.getValue() != null ? colorScaleBarFontSizeSpinner.getValue() : 0);
+        QuietPreferences.setRenderedColorScaleBarBold(colorScaleBarBoldCheck.isSelected());
     }
 
     /**
@@ -565,6 +758,16 @@ public class RenderedConfigPane extends GridPane {
                 .scaleBarFontSize(scaleBarFontSizeSpinner.getValue() != null
                         ? scaleBarFontSizeSpinner.getValue() : 0)
                 .scaleBarBoldText(scaleBarBoldCheck.isSelected());
+
+        builder.densityMapName(densityMapCombo.getValue())
+                .colormapName(colormapCombo.getValue())
+                .showColorScaleBar(showColorScaleBarCheck.isSelected())
+                .colorScaleBarPosition(colorScaleBarPositionCombo.getValue() != null
+                        ? colorScaleBarPositionCombo.getValue()
+                        : ScaleBarRenderer.Position.LOWER_RIGHT)
+                .colorScaleBarFontSize(colorScaleBarFontSizeSpinner.getValue() != null
+                        ? colorScaleBarFontSizeSpinner.getValue() : 0)
+                .colorScaleBarBoldText(colorScaleBarBoldCheck.isSelected());
 
         if (modeCombo.getValue() == RenderedExportConfig.RenderMode.CLASSIFIER_OVERLAY) {
             builder.classifierName(classifierCombo.getValue());
@@ -629,8 +832,9 @@ public class RenderedConfigPane extends GridPane {
             return;
         }
 
-        // Load classifier if needed
+        // Load classifier or density map builder if needed
         PixelClassifier classifier = null;
+        DensityMapBuilder densityBuilder = null;
         if (config.getRenderMode() == RenderedExportConfig.RenderMode.CLASSIFIER_OVERLAY) {
             String classifierName = config.getClassifierName();
             if (classifierName == null || classifierName.isBlank()) {
@@ -643,6 +847,23 @@ public class RenderedConfigPane extends GridPane {
                     classifier = project.getPixelClassifiers().get(classifierName);
                 } catch (Exception e) {
                     logger.error("Failed to load classifier for preview: {}", classifierName, e);
+                    return;
+                }
+            }
+        } else if (config.getRenderMode() == RenderedExportConfig.RenderMode.DENSITY_MAP_OVERLAY) {
+            String dmName = config.getDensityMapName();
+            if (dmName == null || dmName.isBlank()) {
+                logger.warn("No density map selected for preview");
+                return;
+            }
+            var project = qupath.getProject();
+            if (project != null) {
+                try {
+                    var dmResources = project.getResources(
+                            DensityMaps.PROJECT_LOCATION, DensityMapBuilder.class, "json");
+                    densityBuilder = dmResources.get(dmName);
+                } catch (Exception e) {
+                    logger.error("Failed to load density map for preview: {}", dmName, e);
                     return;
                 }
             }
@@ -660,11 +881,12 @@ public class RenderedConfigPane extends GridPane {
         progressStage.show();
 
         final PixelClassifier finalClassifier = classifier;
+        final DensityMapBuilder finalDensityBuilder = densityBuilder;
 
         Thread previewThread = new Thread(() -> {
             try {
                 BufferedImage preview = RenderedImageExporter.renderPreview(
-                        imageData, finalClassifier, config, 800);
+                        imageData, finalClassifier, finalDensityBuilder, config, 800);
 
                 Platform.runLater(() -> {
                     progressStage.close();
@@ -703,6 +925,10 @@ public class RenderedConfigPane extends GridPane {
 
     public RenderedExportConfig.RenderMode getRenderMode() {
         return modeCombo.getValue();
+    }
+
+    public String getDensityMapName() {
+        return densityMapCombo.getValue();
     }
 
     /**

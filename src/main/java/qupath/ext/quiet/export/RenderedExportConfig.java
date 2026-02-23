@@ -21,7 +21,9 @@ public class RenderedExportConfig {
         /** Export with a pixel classifier overlay rendered on top. */
         CLASSIFIER_OVERLAY,
         /** Export with object overlays (annotations/detections) only. */
-        OBJECT_OVERLAY
+        OBJECT_OVERLAY,
+        /** Export with a density map overlay colorized by a LUT. */
+        DENSITY_MAP_OVERLAY
     }
 
     /**
@@ -58,6 +60,12 @@ public class RenderedExportConfig {
     private final String scaleBarColorHex;
     private final int scaleBarFontSize;
     private final boolean scaleBarBoldText;
+    private final String densityMapName;
+    private final String colormapName;
+    private final boolean showColorScaleBar;
+    private final ScaleBarRenderer.Position colorScaleBarPosition;
+    private final int colorScaleBarFontSize;
+    private final boolean colorScaleBarBoldText;
 
     private RenderedExportConfig(Builder builder) {
         this.renderMode = builder.renderMode;
@@ -79,6 +87,12 @@ public class RenderedExportConfig {
         this.scaleBarColorHex = builder.scaleBarColorHex;
         this.scaleBarFontSize = builder.scaleBarFontSize;
         this.scaleBarBoldText = builder.scaleBarBoldText;
+        this.densityMapName = builder.densityMapName;
+        this.colormapName = builder.colormapName;
+        this.showColorScaleBar = builder.showColorScaleBar;
+        this.colorScaleBarPosition = builder.colorScaleBarPosition;
+        this.colorScaleBarFontSize = builder.colorScaleBarFontSize;
+        this.colorScaleBarBoldText = builder.colorScaleBarBoldText;
     }
 
     public RenderMode getRenderMode() {
@@ -174,6 +188,30 @@ public class RenderedExportConfig {
         return scaleBarBoldText;
     }
 
+    public String getDensityMapName() {
+        return densityMapName;
+    }
+
+    public String getColormapName() {
+        return colormapName;
+    }
+
+    public boolean isShowColorScaleBar() {
+        return showColorScaleBar;
+    }
+
+    public ScaleBarRenderer.Position getColorScaleBarPosition() {
+        return colorScaleBarPosition;
+    }
+
+    public int getColorScaleBarFontSize() {
+        return colorScaleBarFontSize;
+    }
+
+    public boolean isColorScaleBarBoldText() {
+        return colorScaleBarBoldText;
+    }
+
     /**
      * Converts the hex color string to a {@link java.awt.Color}.
      * Falls back to white if the hex string is invalid.
@@ -224,6 +262,12 @@ public class RenderedExportConfig {
         private String scaleBarColorHex = "#FFFFFF";
         private int scaleBarFontSize = 0;
         private boolean scaleBarBoldText = true;
+        private String densityMapName;
+        private String colormapName = "Viridis";
+        private boolean showColorScaleBar = false;
+        private ScaleBarRenderer.Position colorScaleBarPosition = ScaleBarRenderer.Position.LOWER_RIGHT;
+        private int colorScaleBarFontSize = 0;
+        private boolean colorScaleBarBoldText = true;
 
         public Builder renderMode(RenderMode mode) {
             this.renderMode = mode;
@@ -320,6 +364,36 @@ public class RenderedExportConfig {
             return this;
         }
 
+        public Builder densityMapName(String name) {
+            this.densityMapName = name;
+            return this;
+        }
+
+        public Builder colormapName(String name) {
+            this.colormapName = name != null ? name : "Viridis";
+            return this;
+        }
+
+        public Builder showColorScaleBar(boolean show) {
+            this.showColorScaleBar = show;
+            return this;
+        }
+
+        public Builder colorScaleBarPosition(ScaleBarRenderer.Position position) {
+            this.colorScaleBarPosition = position;
+            return this;
+        }
+
+        public Builder colorScaleBarFontSize(int size) {
+            this.colorScaleBarFontSize = size;
+            return this;
+        }
+
+        public Builder colorScaleBarBoldText(boolean bold) {
+            this.colorScaleBarBoldText = bold;
+            return this;
+        }
+
         /**
          * Build the export configuration, validating required fields.
          *
@@ -335,6 +409,11 @@ public class RenderedExportConfig {
                 if (!includeAnnotations && !includeDetections) {
                     throw new IllegalArgumentException(
                             "At least one object type (annotations or detections) must be selected");
+                }
+            } else if (renderMode == RenderMode.DENSITY_MAP_OVERLAY) {
+                if (densityMapName == null || densityMapName.isBlank()) {
+                    throw new IllegalArgumentException(
+                            "Density map name is required for density map overlay mode");
                 }
             }
             if (outputDirectory == null) {

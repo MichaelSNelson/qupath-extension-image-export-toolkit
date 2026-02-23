@@ -11,6 +11,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import javafx.concurrent.Task;
+import qupath.lib.analysis.heatmaps.DensityMaps.DensityMapBuilder;
 import qupath.lib.classifiers.pixel.PixelClassifier;
 import qupath.lib.images.ImageData;
 import qupath.lib.images.servers.ImageServer;
@@ -36,6 +37,7 @@ public class BatchExportTask extends Task<ExportResult> {
     private final RawExportConfig rawConfig;
     private final TiledExportConfig tiledConfig;
     private final PixelClassifier classifier;
+    private final DensityMapBuilder densityBuilder;
     private final String workflowScript;
     private final boolean exportGeoJson;
     private final File outputDirectory;
@@ -46,10 +48,11 @@ public class BatchExportTask extends Task<ExportResult> {
     public static BatchExportTask forRendered(List<ProjectImageEntry<BufferedImage>> entries,
                                               RenderedExportConfig config,
                                               PixelClassifier classifier,
+                                              DensityMapBuilder densityBuilder,
                                               String workflowScript,
                                               boolean exportGeoJson) {
         return new BatchExportTask(entries, ExportCategory.RENDERED,
-                config, null, null, null, classifier, workflowScript,
+                config, null, null, null, classifier, densityBuilder, workflowScript,
                 exportGeoJson, config.getOutputDirectory());
     }
 
@@ -61,7 +64,7 @@ public class BatchExportTask extends Task<ExportResult> {
                                           String workflowScript,
                                           boolean exportGeoJson) {
         return new BatchExportTask(entries, ExportCategory.MASK,
-                null, config, null, null, null, workflowScript,
+                null, config, null, null, null, null, workflowScript,
                 exportGeoJson, config.getOutputDirectory());
     }
 
@@ -73,7 +76,7 @@ public class BatchExportTask extends Task<ExportResult> {
                                          String workflowScript,
                                          boolean exportGeoJson) {
         return new BatchExportTask(entries, ExportCategory.RAW,
-                null, null, config, null, null, workflowScript,
+                null, null, config, null, null, null, workflowScript,
                 exportGeoJson, config.getOutputDirectory());
     }
 
@@ -85,7 +88,7 @@ public class BatchExportTask extends Task<ExportResult> {
                                            String workflowScript,
                                            boolean exportGeoJson) {
         return new BatchExportTask(entries, ExportCategory.TILED,
-                null, null, null, config, null, workflowScript,
+                null, null, null, config, null, null, workflowScript,
                 exportGeoJson, config.getOutputDirectory());
     }
 
@@ -96,6 +99,7 @@ public class BatchExportTask extends Task<ExportResult> {
                             RawExportConfig rawConfig,
                             TiledExportConfig tiledConfig,
                             PixelClassifier classifier,
+                            DensityMapBuilder densityBuilder,
                             String workflowScript,
                             boolean exportGeoJson,
                             File outputDirectory) {
@@ -106,6 +110,7 @@ public class BatchExportTask extends Task<ExportResult> {
         this.rawConfig = rawConfig;
         this.tiledConfig = tiledConfig;
         this.classifier = classifier;
+        this.densityBuilder = densityBuilder;
         this.workflowScript = workflowScript;
         this.exportGeoJson = exportGeoJson;
         this.outputDirectory = outputDirectory;
@@ -202,15 +207,20 @@ public class BatchExportTask extends Task<ExportResult> {
 
     private void exportRendered(ImageData<BufferedImage> imageData, String entryName)
             throws Exception {
-        if (renderedConfig.getRenderMode() == RenderedExportConfig.RenderMode.OBJECT_OVERLAY) {
-            RenderedImageExporter.exportWithObjectOverlay(imageData, renderedConfig, entryName);
-        } else {
-            if (!classifier.supportsImage(imageData)) {
-                throw new IllegalArgumentException(
-                        "Classifier does not support image: " + entryName);
+        switch (renderedConfig.getRenderMode()) {
+            case OBJECT_OVERLAY ->
+                RenderedImageExporter.exportWithObjectOverlay(imageData, renderedConfig, entryName);
+            case DENSITY_MAP_OVERLAY ->
+                RenderedImageExporter.exportWithDensityMap(
+                        imageData, densityBuilder, renderedConfig, entryName);
+            case CLASSIFIER_OVERLAY -> {
+                if (!classifier.supportsImage(imageData)) {
+                    throw new IllegalArgumentException(
+                            "Classifier does not support image: " + entryName);
+                }
+                RenderedImageExporter.exportWithClassifier(
+                        imageData, classifier, renderedConfig, entryName);
             }
-            RenderedImageExporter.exportWithClassifier(
-                    imageData, classifier, renderedConfig, entryName);
         }
     }
 
@@ -307,9 +317,11 @@ public class BatchExportTask extends Task<ExportResult> {
                                  ProjectImageEntry<BufferedImage> entry) {
         try {
             String stepName = switch (category) {
-                case RENDERED -> renderedConfig.getRenderMode() ==
-                        RenderedExportConfig.RenderMode.OBJECT_OVERLAY
-                        ? "Object Overlay Export" : "Classifier Export";
+                case RENDERED -> switch (renderedConfig.getRenderMode()) {
+                    case OBJECT_OVERLAY -> "Object Overlay Export";
+                    case DENSITY_MAP_OVERLAY -> "Density Map Export";
+                    case CLASSIFIER_OVERLAY -> "Classifier Export";
+                };
                 case MASK -> "Mask Export";
                 case RAW -> "Raw Image Export";
                 case TILED -> "Tiled Export";

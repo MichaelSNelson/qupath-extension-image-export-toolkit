@@ -31,6 +31,8 @@ import qupath.ext.quiet.export.TiledExportConfig;
 import qupath.ext.quiet.preferences.QuietPreferences;
 import qupath.ext.quiet.export.ScriptGenerator;
 import qupath.fx.dialogs.Dialogs;
+import qupath.lib.analysis.heatmaps.DensityMaps;
+import qupath.lib.analysis.heatmaps.DensityMaps.DensityMapBuilder;
 import qupath.lib.classifiers.pixel.PixelClassifier;
 import qupath.lib.gui.QuPathGUI;
 
@@ -282,6 +284,8 @@ public class ExportWizard {
         RenderedExportConfig config = renderedConfigPane.buildConfig(outputDir);
 
         PixelClassifier classifier = null;
+        DensityMapBuilder densityBuilder = null;
+
         if (config.getRenderMode() == RenderedExportConfig.RenderMode.CLASSIFIER_OVERLAY) {
             String classifierName = renderedConfigPane.getClassifierName();
             if (classifierName == null || classifierName.isEmpty()) {
@@ -299,13 +303,33 @@ public class ExportWizard {
                         String.format(resources.getString("error.classifierLoad"), classifierName));
                 return;
             }
+        } else if (config.getRenderMode() == RenderedExportConfig.RenderMode.DENSITY_MAP_OVERLAY) {
+            String dmName = renderedConfigPane.getDensityMapName();
+            if (dmName == null || dmName.isEmpty()) {
+                Dialogs.showWarningNotification(
+                        resources.getString("name"),
+                        resources.getString("error.noDensityMap"));
+                return;
+            }
+            try {
+                var dmResources = qupath.getProject().getResources(
+                        DensityMaps.PROJECT_LOCATION, DensityMapBuilder.class, "json");
+                densityBuilder = dmResources.get(dmName);
+            } catch (Exception e) {
+                logger.error("Failed to load density map: {}", dmName, e);
+                Dialogs.showErrorMessage(
+                        resources.getString("error.title"),
+                        String.format(resources.getString("error.densityMapLoad"), dmName));
+                return;
+            }
         }
 
         String workflowScript = addToWorkflow
                 ? ScriptGenerator.generate(ExportCategory.RENDERED, config) : null;
 
         currentTask = BatchExportTask.forRendered(
-                imageSelectionPane.getSelectedEntries(), config, classifier, workflowScript, exportGeoJson);
+                imageSelectionPane.getSelectedEntries(), config, classifier,
+                densityBuilder, workflowScript, exportGeoJson);
         lastExportDirectory = outputDir;
         runTask();
     }

@@ -225,4 +225,79 @@ class RenderedExportConfigTest {
         assertFalse(config.isIncludeAnnotations());
         assertTrue(config.isIncludeDetections());
     }
+
+    @Test
+    void testDensityMapModeRequiresDensityMapName() {
+        assertThrows(IllegalArgumentException.class, () ->
+                new RenderedExportConfig.Builder()
+                        .renderMode(RenderedExportConfig.RenderMode.DENSITY_MAP_OVERLAY)
+                        .outputDirectory(tempDir)
+                        .build());
+    }
+
+    @Test
+    void testDensityMapModeBlankNameThrows() {
+        assertThrows(IllegalArgumentException.class, () ->
+                new RenderedExportConfig.Builder()
+                        .renderMode(RenderedExportConfig.RenderMode.DENSITY_MAP_OVERLAY)
+                        .densityMapName("   ")
+                        .outputDirectory(tempDir)
+                        .build());
+    }
+
+    @Test
+    void testDensityMapModeWithValidName() {
+        RenderedExportConfig config = new RenderedExportConfig.Builder()
+                .renderMode(RenderedExportConfig.RenderMode.DENSITY_MAP_OVERLAY)
+                .densityMapName("my_density_map")
+                .colormapName("Magma")
+                .outputDirectory(tempDir)
+                .build();
+
+        assertEquals(RenderedExportConfig.RenderMode.DENSITY_MAP_OVERLAY, config.getRenderMode());
+        assertEquals("my_density_map", config.getDensityMapName());
+        assertEquals("Magma", config.getColormapName());
+    }
+
+    @Test
+    void testColorScaleBarDefaults() {
+        RenderedExportConfig config = new RenderedExportConfig.Builder()
+                .classifierName("test")
+                .outputDirectory(tempDir)
+                .build();
+
+        assertFalse(config.isShowColorScaleBar());
+        assertEquals(ScaleBarRenderer.Position.LOWER_RIGHT, config.getColorScaleBarPosition());
+        assertEquals(0, config.getColorScaleBarFontSize());
+        assertTrue(config.isColorScaleBarBoldText());
+    }
+
+    @Test
+    void testColormapNameDefault() {
+        RenderedExportConfig config = new RenderedExportConfig.Builder()
+                .renderMode(RenderedExportConfig.RenderMode.DENSITY_MAP_OVERLAY)
+                .densityMapName("test_dm")
+                .outputDirectory(tempDir)
+                .build();
+
+        assertEquals("Viridis", config.getColormapName());
+    }
+
+    @Test
+    void testColorScaleBarSettings() {
+        RenderedExportConfig config = new RenderedExportConfig.Builder()
+                .renderMode(RenderedExportConfig.RenderMode.DENSITY_MAP_OVERLAY)
+                .densityMapName("test_dm")
+                .showColorScaleBar(true)
+                .colorScaleBarPosition(ScaleBarRenderer.Position.UPPER_LEFT)
+                .colorScaleBarFontSize(18)
+                .colorScaleBarBoldText(false)
+                .outputDirectory(tempDir)
+                .build();
+
+        assertTrue(config.isShowColorScaleBar());
+        assertEquals(ScaleBarRenderer.Position.UPPER_LEFT, config.getColorScaleBarPosition());
+        assertEquals(18, config.getColorScaleBarFontSize());
+        assertFalse(config.isColorScaleBarBoldText());
+    }
 }
