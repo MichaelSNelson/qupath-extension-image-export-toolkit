@@ -44,8 +44,12 @@ Export images with visual overlays composited onto the base image.
 |--------|-------------|
 | **Classifier Overlay** | Render a pixel classifier's output on top of the image at configurable opacity |
 | **Object Overlay** | Render annotation and/or detection objects with fill, outline, and name options |
+| **Density Map Overlay** | Render a saved density map with a configurable colormap (Viridis, Magma, etc.) and optional color scale bar |
+| **Region Type** | Export the whole image or individual annotation regions (see below) |
 | **Display Settings** | Control brightness/contrast, channel visibility, and LUTs applied to the base image (see below) |
 | **Scale Bar** | Optionally burn a scale bar into the exported image with configurable position and color (see below) |
+| **Color Scale Bar** | For density map mode, optionally burn a color-mapped legend with min/max labels (see below) |
+| **Panel Label** | Optionally add a letter label (A, B, C...) for multi-panel publication figures (see below) |
 | **Downsample** | Resolution factor (1x = full resolution, 4x = quarter, etc.) |
 | **Format** | PNG, TIFF, JPEG, OME-TIFF |
 
@@ -60,6 +64,17 @@ By default, rendered exports now apply per-image brightness/contrast and channel
 | **Saved Preset** | Loads a named B&C preset saved in the project (via the Brightness & Contrast dialog's save button) and applies it to all images. |
 | **Raw (No Adjustments)** | Exports raw pixel data with no display transforms. This was the only behavior prior to v0.2.1. |
 
+#### Annotation Region Export
+
+Instead of exporting the whole image, you can export individual annotation regions as separate cropped panels -- ideal for publication figures showing specific tissue features.
+
+| Option | Values |
+|--------|--------|
+| **Region type** | Whole image (default), All annotations (individual) |
+| **Region padding** | Pixel padding around each annotation's bounding box (default: 0) |
+
+When "All annotations" is selected, each annotation's bounding box is exported as a separate image file, with all overlays (classifier, objects, density map, scale bar, panel label) applied to the cropped region. Padding is clamped to image bounds.
+
 #### Scale Bar
 
 Rendered exports can optionally include a burned-in scale bar with text label. The scale bar automatically picks a "nice" length (e.g., 50 um, 200 um, 1 mm) targeting roughly 15% of the image width, and formats the label with appropriate units.
@@ -68,11 +83,40 @@ Rendered exports can optionally include a burned-in scale bar with text label. T
 |--------|--------|
 | **Show scale bar** | Enable/disable (default: off) |
 | **Position** | Lower Right (default), Lower Left, Upper Right, Upper Left |
-| **Color** | White (default) or Black -- drawn with a contrast outline for visibility on any background |
+| **Color** | Any hex color via color picker (default: white) -- drawn with a luminance-based contrast outline for visibility on any background |
+| **Font size** | Auto (computed from image dimensions) or explicit size in points |
+| **Bold text** | Enable/disable (default: on) |
 
 The scale bar requires pixel calibration in the image metadata. If an image has no calibration, the scale bar is skipped with a warning.
 
 > **Note:** Scale bars are only available for rendered exports. Mask, raw, and tiled exports preserve exact pixel values and must not be modified.
+
+#### Color Scale Bar
+
+For density map overlay mode, a color-mapped legend can be burned in showing the value range with min/max labels and a gradient swatch matching the selected colormap.
+
+| Option | Values |
+|--------|--------|
+| **Show color scale bar** | Enable/disable (default: off) |
+| **Position** | Lower Right (default), Lower Left, Upper Right, Upper Left |
+| **Font size** | Auto (computed from image dimensions) or explicit size in points |
+| **Bold text** | Enable/disable (default: on) |
+
+The color scale bar is only available in density map overlay mode.
+
+#### Panel Labels
+
+Add automatic letter labels (A, B, C, ...) to exported images for multi-panel publication figures.
+
+| Option | Values |
+|--------|--------|
+| **Show panel label** | Enable/disable (default: off) |
+| **Label text** | Fixed text (e.g., "A") or leave blank for auto-increment (A, B, C... per image in batch) |
+| **Position** | Upper Left (default), Upper Right, Lower Left, Lower Right |
+| **Font size** | Auto (computed from image dimensions) or explicit size in points |
+| **Bold text** | Enable/disable (default: on) |
+
+Panel labels are drawn with a luminance-based contrast outline for visibility on any background. In batch export with auto-increment, the first image receives "A", the second "B", and so on (extending to "AA", "AB"... after "Z").
 
 ### Label / Mask
 
@@ -232,7 +276,7 @@ src/main/java/qupath/ext/quiet/
   export/
     ExportCategory.java            # RENDERED, MASK, RAW, TILED
     OutputFormat.java              # PNG, TIFF, JPEG, OME_TIFF, OME_TIFF_PYRAMID
-    RenderedExportConfig.java      # Rendered export configuration
+    RenderedExportConfig.java      # Rendered export configuration (31 fields)
     RenderedImageExporter.java     # Rendered export logic
     MaskExportConfig.java          # Mask/label export configuration
     MaskImageExporter.java         # LabeledImageServer-based mask export
@@ -244,6 +288,9 @@ src/main/java/qupath/ext/quiet/
     BatchExportTask.java           # JavaFX Task for background batch processing
     ExportResult.java              # Export outcome tracking
     ScaleBarRenderer.java          # Java2D scale bar drawing utility
+    ColorScaleBarRenderer.java     # Color-mapped legend for density maps
+    PanelLabelRenderer.java        # Panel letter label renderer (A, B, C...)
+    TextRenderUtils.java           # Shared text rendering (outlined text, font sizing)
     ExportMetadataWriter.java      # Metadata sidecar file writer
   scripting/
     ScriptGenerator.java           # Script generation dispatcher
@@ -277,18 +324,26 @@ src/main/resources/
 - **Channel selection** currently uses channel indices. The UI populates available channels, but auto-detection from image metadata is planned for a future release.
 - **Tiled GeoJSON** produces one GeoJSON file per tile via QuPath's `TileExporter.exportJson()` API (not a single consolidated file).
 - Rendered export with classifier overlay requires a pixel classifier saved in the QuPath project.
+- Density map overlay requires a density map saved in the QuPath project (created via **Analyze > Density maps**).
 - **Display Settings** "Current Viewer" mode requires an image to be open in the viewer at export time. "Saved Preset" mode requires presets saved via QuPath's Brightness & Contrast dialog.
 
 ## Roadmap
 
 Future releases may include:
 
-- Measurement-filtered export (export objects by area, intensity, etc.)
+- Inset / zoom panels (magnified detail inset in a corner)
+- Split-channel export (individual fluorescence channels + merge)
+- Multi-panel grid / figure layout composition
+- Display range matching across batch images
+- DPI / resolution control for journal requirements
+- Dimension / timestamp labels
 - Contour/outline mask export
-- Z-stack and timepoint handling
+- SVG / vector export with editable overlays
 - Stain deconvolution channel export
 - COCO/YOLO annotation format export
 - Per-object crop export for classification training
+
+See `documentation/POTENTIAL_FEATURES.md` for detailed implementation plans.
 
 ---
 

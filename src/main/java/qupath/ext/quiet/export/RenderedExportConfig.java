@@ -80,6 +80,11 @@ public class RenderedExportConfig {
     private final ScaleBarRenderer.Position colorScaleBarPosition;
     private final int colorScaleBarFontSize;
     private final boolean colorScaleBarBoldText;
+    private final boolean showPanelLabel;
+    private final String panelLabelText;
+    private final ScaleBarRenderer.Position panelLabelPosition;
+    private final int panelLabelFontSize;
+    private final boolean panelLabelBold;
 
     private RenderedExportConfig(Builder builder) {
         this.regionType = builder.regionType;
@@ -111,6 +116,11 @@ public class RenderedExportConfig {
         this.colorScaleBarPosition = builder.colorScaleBarPosition;
         this.colorScaleBarFontSize = builder.colorScaleBarFontSize;
         this.colorScaleBarBoldText = builder.colorScaleBarBoldText;
+        this.showPanelLabel = builder.showPanelLabel;
+        this.panelLabelText = builder.panelLabelText;
+        this.panelLabelPosition = builder.panelLabelPosition;
+        this.panelLabelFontSize = builder.panelLabelFontSize;
+        this.panelLabelBold = builder.panelLabelBold;
     }
 
     public RegionType getRegionType() {
@@ -250,6 +260,32 @@ public class RenderedExportConfig {
         return colorScaleBarBoldText;
     }
 
+    public boolean isShowPanelLabel() {
+        return showPanelLabel;
+    }
+
+    /**
+     * Returns the fixed panel label text, or null/blank for auto-increment.
+     */
+    public String getPanelLabelText() {
+        return panelLabelText;
+    }
+
+    public ScaleBarRenderer.Position getPanelLabelPosition() {
+        return panelLabelPosition;
+    }
+
+    /**
+     * Returns the panel label font size in pixels. 0 means auto-compute.
+     */
+    public int getPanelLabelFontSize() {
+        return panelLabelFontSize;
+    }
+
+    public boolean isPanelLabelBold() {
+        return panelLabelBold;
+    }
+
     /**
      * Converts the hex color string to a {@link java.awt.Color}.
      * Falls back to white if the hex string is invalid.
@@ -324,6 +360,11 @@ public class RenderedExportConfig {
         private ScaleBarRenderer.Position colorScaleBarPosition = ScaleBarRenderer.Position.LOWER_RIGHT;
         private int colorScaleBarFontSize = 0;
         private boolean colorScaleBarBoldText = true;
+        private boolean showPanelLabel = false;
+        private String panelLabelText = null;
+        private ScaleBarRenderer.Position panelLabelPosition = ScaleBarRenderer.Position.UPPER_LEFT;
+        private int panelLabelFontSize = 0;
+        private boolean panelLabelBold = true;
 
         public Builder regionType(RegionType type) {
             this.regionType = type;
@@ -462,6 +503,31 @@ public class RenderedExportConfig {
 
         public Builder colorScaleBarBoldText(boolean bold) {
             this.colorScaleBarBoldText = bold;
+            return this;
+        }
+
+        public Builder showPanelLabel(boolean show) {
+            this.showPanelLabel = show;
+            return this;
+        }
+
+        public Builder panelLabelText(String text) {
+            this.panelLabelText = text;
+            return this;
+        }
+
+        public Builder panelLabelPosition(ScaleBarRenderer.Position position) {
+            this.panelLabelPosition = position;
+            return this;
+        }
+
+        public Builder panelLabelFontSize(int size) {
+            this.panelLabelFontSize = size;
+            return this;
+        }
+
+        public Builder panelLabelBold(boolean bold) {
+            this.panelLabelBold = bold;
             return this;
         }
 

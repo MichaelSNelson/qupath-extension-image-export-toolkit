@@ -26,8 +26,10 @@ import javafx.scene.control.ProgressIndicator;
 import javafx.scene.control.Slider;
 import javafx.scene.control.Spinner;
 import javafx.scene.control.SpinnerValueFactory;
+import javafx.scene.control.TextField;
 import javafx.scene.control.Tooltip;
 import javafx.scene.image.ImageView;
+import javafx.scene.image.WritableImage;
 import javafx.scene.layout.GridPane;
 import javafx.scene.layout.HBox;
 import javafx.scene.layout.Priority;
@@ -105,6 +107,16 @@ public class RenderedConfigPane extends GridPane {
     private Spinner<Integer> colorScaleBarFontSizeSpinner;
     private Label colorScaleBarFontSizeLabel;
     private CheckBox colorScaleBarBoldCheck;
+
+    // Panel label controls
+    private CheckBox showPanelLabelCheck;
+    private TextField panelLabelTextField;
+    private Label panelLabelTextLabel;
+    private ComboBox<ScaleBarRenderer.Position> panelLabelPositionCombo;
+    private Label panelLabelPositionLabel;
+    private Spinner<Integer> panelLabelFontSizeSpinner;
+    private Label panelLabelFontSizeLabel;
+    private CheckBox panelLabelBoldCheck;
 
     // Controls needing visibility toggling
     private Label classifierLabel;
@@ -431,6 +443,9 @@ public class RenderedConfigPane extends GridPane {
         colormapCombo = new ComboBox<>();
         colormapCombo.getItems().addAll(ColorMaps.getColorMaps().keySet());
         colormapCombo.setValue("Viridis");
+        // Custom cell factory to show colormap gradient swatches
+        colormapCombo.setCellFactory(lv -> createColormapCell());
+        colormapCombo.setButtonCell(createColormapCell());
         add(colormapCombo, 1, row);
         row++;
 
@@ -493,6 +508,72 @@ public class RenderedConfigPane extends GridPane {
         add(colorScaleBarBoldCheck, 1, row);
         row++;
 
+        // Panel label options
+        showPanelLabelCheck = new CheckBox(resources.getString("rendered.label.showPanelLabel"));
+        add(showPanelLabelCheck, 1, row);
+        row++;
+
+        panelLabelTextLabel = new Label(resources.getString("rendered.label.panelLabelText"));
+        add(panelLabelTextLabel, 0, row);
+        panelLabelTextField = new TextField();
+        panelLabelTextField.setPromptText("Auto (A, B, C...)");
+        add(panelLabelTextField, 1, row);
+        row++;
+
+        panelLabelPositionLabel = new Label(resources.getString("rendered.label.panelLabelPosition"));
+        add(panelLabelPositionLabel, 0, row);
+        panelLabelPositionCombo = new ComboBox<>(FXCollections.observableArrayList(
+                ScaleBarRenderer.Position.values()));
+        panelLabelPositionCombo.setValue(ScaleBarRenderer.Position.UPPER_LEFT);
+        panelLabelPositionCombo.setConverter(new StringConverter<>() {
+            @Override
+            public String toString(ScaleBarRenderer.Position pos) {
+                if (pos == null) return "";
+                return switch (pos) {
+                    case LOWER_RIGHT -> resources.getString("rendered.scaleBar.lowerRight");
+                    case LOWER_LEFT -> resources.getString("rendered.scaleBar.lowerLeft");
+                    case UPPER_RIGHT -> resources.getString("rendered.scaleBar.upperRight");
+                    case UPPER_LEFT -> resources.getString("rendered.scaleBar.upperLeft");
+                };
+            }
+            @Override
+            public ScaleBarRenderer.Position fromString(String s) {
+                return ScaleBarRenderer.Position.UPPER_LEFT;
+            }
+        });
+        add(panelLabelPositionCombo, 1, row);
+        row++;
+
+        panelLabelFontSizeLabel = new Label(resources.getString("rendered.label.panelLabelFontSize"));
+        add(panelLabelFontSizeLabel, 0, row);
+        var plFontSizeFactory = new SpinnerValueFactory.IntegerSpinnerValueFactory(0, 72, 0);
+        plFontSizeFactory.setConverter(new StringConverter<>() {
+            @Override
+            public String toString(Integer value) {
+                if (value == null || value == 0)
+                    return resources.getString("rendered.scaleBar.fontSizeAuto");
+                return String.valueOf(value);
+            }
+            @Override
+            public Integer fromString(String string) {
+                if (string == null || string.isBlank()
+                        || string.equalsIgnoreCase(resources.getString("rendered.scaleBar.fontSizeAuto"))) {
+                    return 0;
+                }
+                try { return Integer.parseInt(string); }
+                catch (NumberFormatException e) { return 0; }
+            }
+        });
+        panelLabelFontSizeSpinner = new Spinner<>(plFontSizeFactory);
+        panelLabelFontSizeSpinner.setEditable(true);
+        add(panelLabelFontSizeSpinner, 1, row);
+        row++;
+
+        panelLabelBoldCheck = new CheckBox(resources.getString("rendered.label.panelLabelBold"));
+        panelLabelBoldCheck.setSelected(true);
+        add(panelLabelBoldCheck, 1, row);
+        row++;
+
         // Preview button
         previewButton = new Button(resources.getString("rendered.label.previewImage"));
         previewButton.setOnAction(e -> handlePreview());
@@ -509,6 +590,11 @@ public class RenderedConfigPane extends GridPane {
         showColorScaleBarCheck.selectedProperty().addListener(
                 (obs, oldVal, newVal) -> updateColorScaleBarVisibility(newVal));
         updateColorScaleBarVisibility(false);
+
+        // Panel label visibility toggling
+        showPanelLabelCheck.selectedProperty().addListener(
+                (obs, oldVal, newVal) -> updatePanelLabelVisibility(newVal));
+        updatePanelLabelVisibility(false);
 
         // Preview button enabled state depends on image being open
         updatePreviewButtonState();
@@ -590,6 +676,23 @@ public class RenderedConfigPane extends GridPane {
         colorScaleBarBoldCheck.setManaged(show);
     }
 
+    private void updatePanelLabelVisibility(boolean show) {
+        panelLabelTextLabel.setVisible(show);
+        panelLabelTextLabel.setManaged(show);
+        panelLabelTextField.setVisible(show);
+        panelLabelTextField.setManaged(show);
+        panelLabelPositionLabel.setVisible(show);
+        panelLabelPositionLabel.setManaged(show);
+        panelLabelPositionCombo.setVisible(show);
+        panelLabelPositionCombo.setManaged(show);
+        panelLabelFontSizeLabel.setVisible(show);
+        panelLabelFontSizeLabel.setManaged(show);
+        panelLabelFontSizeSpinner.setVisible(show);
+        panelLabelFontSizeSpinner.setManaged(show);
+        panelLabelBoldCheck.setVisible(show);
+        panelLabelBoldCheck.setManaged(show);
+    }
+
     private void updateRegionTypeVisibility(RenderedExportConfig.RegionType regionType) {
         boolean isPerAnnotation = (regionType == RenderedExportConfig.RegionType.ALL_ANNOTATIONS);
         classificationFilterLabel.setVisible(isPerAnnotation);
@@ -606,19 +709,50 @@ public class RenderedConfigPane extends GridPane {
     }
 
     private void populateAnnotationClassifications() {
-        classificationCombo.getItems().clear();
+        // Clear checks BEFORE clearing items to avoid ControlsFX
+        // IndexOutOfBoundsException when clearChecks fires change events
+        // that reference items by index
         classificationCombo.getCheckModel().clearChecks();
+        classificationCombo.getItems().clear();
         var project = qupath.getProject();
         if (project == null) return;
 
-        // Add "Unclassified" entry first
-        classificationCombo.getItems().add("Unclassified");
+        // Scan all project images to collect actual annotation classes
+        var classNames = new java.util.TreeSet<String>();
+        boolean hasUnclassified = false;
 
-        var classes = project.getPathClasses();
-        for (PathClass pc : classes) {
-            if (pc == null || pc == PathClass.NULL_CLASS) continue;
-            classificationCombo.getItems().add(pc.toString());
+        for (var entry : project.getImageList()) {
+            try {
+                var hierarchy = entry.readHierarchy();
+                if (hierarchy == null) continue;
+                for (var annotation : hierarchy.getAnnotationObjects()) {
+                    var pathClass = annotation.getPathClass();
+                    if (pathClass == null || pathClass == PathClass.NULL_CLASS) {
+                        hasUnclassified = true;
+                    } else {
+                        classNames.add(pathClass.toString());
+                    }
+                }
+            } catch (Exception e) {
+                logger.debug("Could not read hierarchy for {}: {}",
+                        entry.getImageName(), e.getMessage());
+            }
         }
+
+        // Fall back to project class list if no annotations found
+        if (classNames.isEmpty() && !hasUnclassified) {
+            for (PathClass pc : project.getPathClasses()) {
+                if (pc == null || pc == PathClass.NULL_CLASS) continue;
+                classNames.add(pc.toString());
+            }
+            // Include Unclassified in fallback so the filter is not empty
+            hasUnclassified = true;
+        }
+
+        if (hasUnclassified) {
+            classificationCombo.getItems().add("Unclassified");
+        }
+        classificationCombo.getItems().addAll(classNames);
 
         // Check all items by default
         for (int i = 0; i < classificationCombo.getItems().size(); i++) {
@@ -659,6 +793,11 @@ public class RenderedConfigPane extends GridPane {
         colorScaleBarPositionCombo.setTooltip(createTooltip("tooltip.rendered.colorScaleBarPosition"));
         colorScaleBarFontSizeSpinner.setTooltip(createTooltip("tooltip.rendered.colorScaleBarFontSize"));
         colorScaleBarBoldCheck.setTooltip(createTooltip("tooltip.rendered.colorScaleBarBold"));
+        showPanelLabelCheck.setTooltip(createTooltip("tooltip.rendered.showPanelLabel"));
+        panelLabelTextField.setTooltip(createTooltip("tooltip.rendered.panelLabelText"));
+        panelLabelPositionCombo.setTooltip(createTooltip("tooltip.rendered.panelLabelPosition"));
+        panelLabelFontSizeSpinner.setTooltip(createTooltip("tooltip.rendered.panelLabelFontSize"));
+        panelLabelBoldCheck.setTooltip(createTooltip("tooltip.rendered.panelLabelBold"));
     }
 
     private static Tooltip createTooltip(String key) {
@@ -797,6 +936,20 @@ public class RenderedConfigPane extends GridPane {
         colorScaleBarFontSizeSpinner.getValueFactory().setValue(QuietPreferences.getRenderedColorScaleBarFontSize());
         colorScaleBarBoldCheck.setSelected(QuietPreferences.isRenderedColorScaleBarBold());
         updateColorScaleBarVisibility(showColorScaleBarCheck.isSelected());
+
+        // Panel label preferences
+        showPanelLabelCheck.setSelected(QuietPreferences.isRenderedShowPanelLabel());
+        String savedPanelText = QuietPreferences.getRenderedPanelLabelText();
+        if (savedPanelText != null && !savedPanelText.isBlank()) {
+            panelLabelTextField.setText(savedPanelText);
+        }
+        try {
+            panelLabelPositionCombo.setValue(
+                    ScaleBarRenderer.Position.valueOf(QuietPreferences.getRenderedPanelLabelPosition()));
+        } catch (IllegalArgumentException e) { /* keep default */ }
+        panelLabelFontSizeSpinner.getValueFactory().setValue(QuietPreferences.getRenderedPanelLabelFontSize());
+        panelLabelBoldCheck.setSelected(QuietPreferences.isRenderedPanelLabelBold());
+        updatePanelLabelVisibility(showPanelLabelCheck.isSelected());
     }
 
     /**
@@ -841,6 +994,14 @@ public class RenderedConfigPane extends GridPane {
         QuietPreferences.setRenderedColorScaleBarFontSize(
                 colorScaleBarFontSizeSpinner.getValue() != null ? colorScaleBarFontSizeSpinner.getValue() : 0);
         QuietPreferences.setRenderedColorScaleBarBold(colorScaleBarBoldCheck.isSelected());
+        QuietPreferences.setRenderedShowPanelLabel(showPanelLabelCheck.isSelected());
+        QuietPreferences.setRenderedPanelLabelText(
+                panelLabelTextField.getText() != null ? panelLabelTextField.getText() : "");
+        var plPos = panelLabelPositionCombo.getValue();
+        if (plPos != null) QuietPreferences.setRenderedPanelLabelPosition(plPos.name());
+        QuietPreferences.setRenderedPanelLabelFontSize(
+                panelLabelFontSizeSpinner.getValue() != null ? panelLabelFontSizeSpinner.getValue() : 0);
+        QuietPreferences.setRenderedPanelLabelBold(panelLabelBoldCheck.isSelected());
     }
 
     /**
@@ -886,6 +1047,17 @@ public class RenderedConfigPane extends GridPane {
                 .scaleBarFontSize(scaleBarFontSizeSpinner.getValue() != null
                         ? scaleBarFontSizeSpinner.getValue() : 0)
                 .scaleBarBoldText(scaleBarBoldCheck.isSelected());
+
+        // Panel label options
+        String panelText = panelLabelTextField.getText();
+        builder.showPanelLabel(showPanelLabelCheck.isSelected())
+                .panelLabelText(panelText != null && !panelText.isBlank() ? panelText : null)
+                .panelLabelPosition(panelLabelPositionCombo.getValue() != null
+                        ? panelLabelPositionCombo.getValue()
+                        : ScaleBarRenderer.Position.UPPER_LEFT)
+                .panelLabelFontSize(panelLabelFontSizeSpinner.getValue() != null
+                        ? panelLabelFontSizeSpinner.getValue() : 0)
+                .panelLabelBold(panelLabelBoldCheck.isSelected());
 
         builder.densityMapName(densityMapCombo.getValue())
                 .colormapName(colormapCombo.getValue())
@@ -1057,6 +1229,44 @@ public class RenderedConfigPane extends GridPane {
 
     public String getDensityMapName() {
         return densityMapCombo.getValue();
+    }
+
+    /**
+     * Create a ListCell that shows a colormap gradient swatch next to the name.
+     */
+    private static ListCell<String> createColormapCell() {
+        return new ListCell<>() {
+            private final ImageView iv = new ImageView();
+            @Override
+            protected void updateItem(String name, boolean empty) {
+                super.updateItem(name, empty);
+                if (empty || name == null) {
+                    setText(null);
+                    setGraphic(null);
+                    return;
+                }
+                setText(name);
+                var cm = ColorMaps.getColorMaps().get(name);
+                if (cm != null) {
+                    WritableImage swatch = new WritableImage(60, 12);
+                    var pw = swatch.getPixelWriter();
+                    for (int x = 0; x < 60; x++) {
+                        int rgb = cm.getColor((double) x / 59, 0.0, 1.0);
+                        int r = (rgb >> 16) & 0xFF;
+                        int g = (rgb >> 8) & 0xFF;
+                        int b = rgb & 0xFF;
+                        var fxColor = javafx.scene.paint.Color.rgb(r, g, b);
+                        for (int y = 0; y < 12; y++) {
+                            pw.setColor(x, y, fxColor);
+                        }
+                    }
+                    iv.setImage(swatch);
+                    setGraphic(iv);
+                } else {
+                    setGraphic(null);
+                }
+            }
+        };
     }
 
     /**

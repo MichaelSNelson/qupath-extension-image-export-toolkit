@@ -21,11 +21,6 @@ import qupath.lib.color.ColorMaps;
  */
 public class ColorScaleBarRenderer {
 
-    /** Minimum allowed font size (pixels). */
-    private static final int MIN_FONT_SIZE = 4;
-    /** Maximum allowed font size (pixels). */
-    private static final int MAX_FONT_SIZE = 200;
-
     private ColorScaleBarRenderer() {
         // Utility class
     }
@@ -67,7 +62,7 @@ public class ColorScaleBarRenderer {
                     RenderingHints.VALUE_TEXT_ANTIALIAS_ON);
 
             int minDim = Math.min(imageWidth, imageHeight);
-            int effectiveFontSize = resolveFontSize(fontSize, minDim);
+            int effectiveFontSize = TextRenderUtils.resolveFontSize(fontSize, minDim);
             int margin = Math.max(10, minDim / 40);
 
             // Bar dimensions: height ~25% of image height (capped), width ~barHeight/6
@@ -137,14 +132,14 @@ public class ColorScaleBarRenderer {
             }
 
             // Outline around bar
-            Color outlineColor = computeOutlineColor(new Color(colorMap.getColor(
+            Color outlineColor = TextRenderUtils.computeOutlineColor(new Color(colorMap.getColor(
                     (minValue + maxValue) / 2.0, minValue, maxValue)));
             g2d.setColor(outlineColor);
             g2d.drawRect(barX - 1, barY - 1, barWidth + 1, barHeight + 1);
 
             // Draw tick marks and labels
             Color labelPrimary = Color.WHITE;
-            Color labelOutline = computeOutlineColor(labelPrimary);
+            Color labelOutline = TextRenderUtils.computeOutlineColor(labelPrimary);
 
             for (int i = 0; i < tickCount; i++) {
                 double t = (double) i / (tickCount - 1);
@@ -162,7 +157,7 @@ public class ColorScaleBarRenderer {
                 // Clamp label Y to stay within bar bounds
                 labelY = Math.max(barY + textHeight, Math.min(labelY, barY + barHeight));
 
-                drawOutlinedText(g2d, tickLabels[i], labelX, labelY,
+                TextRenderUtils.drawOutlinedText(g2d, tickLabels[i], labelX, labelY,
                         labelPrimary, labelOutline);
             }
 
@@ -194,45 +189,4 @@ public class ColorScaleBarRenderer {
         return String.format("%.2f", value);
     }
 
-    /**
-     * Resolve the effective font size. If the requested size is 0 (auto),
-     * compute from image dimensions. Otherwise clamp to the allowed range.
-     */
-    private static int resolveFontSize(int requested, int minImageDim) {
-        if (requested <= 0) {
-            return Math.max(12, minImageDim / 50);
-        }
-        return Math.max(MIN_FONT_SIZE, Math.min(requested, MAX_FONT_SIZE));
-    }
-
-    /**
-     * Compute the outline/contrast color from luminance of the primary color.
-     * Uses the standard luminance formula.
-     * Returns BLACK for bright colors, WHITE for dark colors.
-     */
-    static Color computeOutlineColor(Color primary) {
-        double luminance = (0.299 * primary.getRed()
-                + 0.587 * primary.getGreen()
-                + 0.114 * primary.getBlue()) / 255.0;
-        return luminance > 0.5 ? Color.BLACK : Color.WHITE;
-    }
-
-    /**
-     * Draw text with an outline for contrast on any background.
-     * Uses 8-direction offset technique.
-     */
-    private static void drawOutlinedText(Graphics2D g2d, String text,
-                                          int x, int y,
-                                          Color primary, Color outline) {
-        g2d.setColor(outline);
-        for (int dx = -1; dx <= 1; dx++) {
-            for (int dy = -1; dy <= 1; dy++) {
-                if (dx != 0 || dy != 0) {
-                    g2d.drawString(text, x + dx, y + dy);
-                }
-            }
-        }
-        g2d.setColor(primary);
-        g2d.drawString(text, x, y);
-    }
 }

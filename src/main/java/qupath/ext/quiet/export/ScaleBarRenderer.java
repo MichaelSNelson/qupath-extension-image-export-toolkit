@@ -1,9 +1,8 @@
 package qupath.ext.quiet.export;
 
-import java.awt.BasicStroke;
+import java.awt.AlphaComposite;
 import java.awt.Color;
 import java.awt.Composite;
-import java.awt.AlphaComposite;
 import java.awt.Font;
 import java.awt.FontMetrics;
 import java.awt.Graphics2D;
@@ -33,11 +32,6 @@ public class ScaleBarRenderer {
             0.1, 0.25, 0.5, 1, 2, 5, 10, 20, 50, 100,
             200, 250, 500, 1000, 2000, 5000, 10000, 20000, 50000
     };
-
-    /** Minimum allowed font size (pixels). */
-    private static final int MIN_FONT_SIZE = 4;
-    /** Maximum allowed font size (pixels). */
-    private static final int MAX_FONT_SIZE = 200;
 
     private ScaleBarRenderer() {
         // Utility class
@@ -93,7 +87,7 @@ public class ScaleBarRenderer {
             // Sizing
             int barHeight = Math.max(4, imageHeight / 150);
             int minDim = Math.min(imageWidth, imageHeight);
-            int effectiveFontSize = resolveFontSize(fontSize, minDim);
+            int effectiveFontSize = TextRenderUtils.resolveFontSize(fontSize, minDim);
             int margin = Math.max(10, minDim / 40);
 
             // Format label: >=1000 um -> mm, else um (ASCII-only)
@@ -134,7 +128,7 @@ public class ScaleBarRenderer {
             int textY = barY - 4;
 
             Color primary = barColor != null ? barColor : Color.WHITE;
-            Color outline = computeOutlineColor(primary);
+            Color outline = TextRenderUtils.computeOutlineColor(primary);
 
             // Draw bar with contrast outline
             g2d.setColor(outline);
@@ -143,7 +137,7 @@ public class ScaleBarRenderer {
             g2d.fillRect(barX, barY, barLengthPx, barHeight);
 
             // Draw text with 8-direction outline for visibility on any background
-            drawOutlinedText(g2d, label, textX, textY, primary, outline);
+            TextRenderUtils.drawOutlinedText(g2d, label, textX, textY, primary, outline);
 
         } finally {
             // Restore graphics state
@@ -154,29 +148,6 @@ public class ScaleBarRenderer {
             g2d.setFont(savedFont);
             g2d.setColor(savedColor);
         }
-    }
-
-    /**
-     * Resolve the effective font size. If the requested size is 0 (auto),
-     * compute from image dimensions. Otherwise clamp to the allowed range.
-     */
-    private static int resolveFontSize(int requested, int minImageDim) {
-        if (requested <= 0) {
-            return Math.max(12, minImageDim / 50);
-        }
-        return Math.max(MIN_FONT_SIZE, Math.min(requested, MAX_FONT_SIZE));
-    }
-
-    /**
-     * Compute the outline/contrast color from luminance of the primary color.
-     * Uses the standard luminance formula: (0.299*R + 0.587*G + 0.114*B) / 255.
-     * Returns BLACK for bright colors, WHITE for dark colors.
-     */
-    private static Color computeOutlineColor(Color primary) {
-        double luminance = (0.299 * primary.getRed()
-                + 0.587 * primary.getGreen()
-                + 0.114 * primary.getBlue()) / 255.0;
-        return luminance > 0.5 ? Color.BLACK : Color.WHITE;
     }
 
     /**
@@ -216,22 +187,4 @@ public class ScaleBarRenderer {
         return String.format("%.2f um", microns);
     }
 
-    /**
-     * Draw text with an outline for contrast on any background.
-     * Uses 8-direction offset technique.
-     */
-    private static void drawOutlinedText(Graphics2D g2d, String text,
-                                          int x, int y,
-                                          Color primary, Color outline) {
-        g2d.setColor(outline);
-        for (int dx = -1; dx <= 1; dx++) {
-            for (int dy = -1; dy <= 1; dy++) {
-                if (dx != 0 || dy != 0) {
-                    g2d.drawString(text, x + dx, y + dy);
-                }
-            }
-        }
-        g2d.setColor(primary);
-        g2d.drawString(text, x, y);
-    }
 }

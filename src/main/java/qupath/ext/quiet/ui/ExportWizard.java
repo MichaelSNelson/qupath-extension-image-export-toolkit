@@ -13,6 +13,7 @@ import javafx.geometry.Pos;
 import javafx.scene.Node;
 import javafx.scene.Scene;
 import javafx.scene.control.Button;
+import javafx.scene.control.ScrollPane;
 import javafx.scene.control.Separator;
 import javafx.scene.layout.BorderPane;
 import javafx.scene.layout.HBox;
@@ -162,6 +163,8 @@ public class ExportWizard {
             // Keep default
         }
 
+        categoryPane.setOnAdvance(this::goNext);
+
         renderedConfigPane = new RenderedConfigPane(qupath);
         maskConfigPane = new MaskConfigPane(qupath);
         rawConfigPane = new RawConfigPane();
@@ -181,12 +184,18 @@ public class ExportWizard {
             case 1 -> centerContent = categoryPane;
             case 2 -> {
                 selectedCategory = categoryPane.getSelectedCategory();
-                centerContent = switch (selectedCategory) {
+                Node configPane = switch (selectedCategory) {
                     case RENDERED -> renderedConfigPane;
                     case MASK -> maskConfigPane;
                     case RAW -> rawConfigPane;
                     case TILED -> tiledConfigPane;
                 };
+                // Wrap in ScrollPane so navigation buttons remain visible
+                // when the config pane content is taller than the window
+                var scrollPane = new ScrollPane(configPane);
+                scrollPane.setFitToWidth(true);
+                scrollPane.setHbarPolicy(ScrollPane.ScrollBarPolicy.NEVER);
+                centerContent = scrollPane;
             }
             case 3 -> {
                 // Set default output dir if empty

@@ -33,6 +33,7 @@ public class CategorySelectionPane extends VBox {
             "-fx-background-radius: 8; -fx-background-color: #e8f0fe; -fx-padding: 14; -fx-cursor: hand;";
 
     private ExportCategory selectedCategory = ExportCategory.RENDERED;
+    private Runnable onAdvance;
     private VBox renderedCard;
     private VBox maskCard;
     private VBox rawCard;
@@ -95,6 +96,9 @@ public class CategorySelectionPane extends VBox {
         card.setOnMouseClicked(e -> {
             selectedCategory = category;
             updateCardStyles();
+            if (e.getClickCount() >= 2 && onAdvance != null) {
+                onAdvance.run();
+            }
         });
 
         return card;
@@ -118,5 +122,13 @@ public class CategorySelectionPane extends VBox {
     public void setSelectedCategory(ExportCategory category) {
         this.selectedCategory = category;
         updateCardStyles();
+    }
+
+    /**
+     * Set a callback to invoke when the user double-clicks a category card
+     * (advancing to the next wizard step).
+     */
+    public void setOnAdvance(Runnable onAdvance) {
+        this.onAdvance = onAdvance;
     }
 }

@@ -321,6 +321,76 @@ class RenderedScriptGeneratorTest {
     }
 
     @Test
+    void testClassifierScriptContainsPanelLabel() {
+        RenderedExportConfig config = new RenderedExportConfig.Builder()
+                .classifierName("test_classifier")
+                .showPanelLabel(true)
+                .panelLabelText("A")
+                .panelLabelPosition(ScaleBarRenderer.Position.UPPER_LEFT)
+                .panelLabelFontSize(20)
+                .panelLabelBold(true)
+                .outputDirectory(tempDir)
+                .build();
+
+        String script = ScriptGenerator.generate(ExportCategory.RENDERED, config);
+
+        assertTrue(script.contains("drawPanelLabel"),
+                "Script should contain drawPanelLabel function");
+        assertTrue(script.contains("showPanelLabel = true"),
+                "Script should set showPanelLabel");
+        assertTrue(script.contains("panelLabelFontSize = 20"),
+                "Script should set panel label font size");
+        assertTrue(script.contains("panelLabelBold = true"),
+                "Script should set panel label bold");
+        assertTrue(script.contains("\"UPPER_LEFT\""),
+                "Script should set panel label position");
+    }
+
+    @Test
+    void testClassifierScriptOmitsPanelLabelWhenDisabled() {
+        // Default config has showPanelLabel=false
+        String script = ScriptGenerator.generate(ExportCategory.RENDERED, classifierConfig);
+
+        assertFalse(script.contains("drawPanelLabel"),
+                "Script should not contain drawPanelLabel function when disabled");
+        assertTrue(script.contains("showPanelLabel = false"),
+                "Script should still have the config variable");
+    }
+
+    @Test
+    void testDensityMapScriptContainsPanelLabel() {
+        RenderedExportConfig config = new RenderedExportConfig.Builder()
+                .renderMode(RenderedExportConfig.RenderMode.DENSITY_MAP_OVERLAY)
+                .densityMapName("test_dm")
+                .showPanelLabel(true)
+                .panelLabelBold(false)
+                .outputDirectory(tempDir)
+                .build();
+
+        String script = ScriptGenerator.generate(ExportCategory.RENDERED, config);
+
+        assertTrue(script.contains("drawPanelLabel"),
+                "Density map script should contain drawPanelLabel function");
+        assertTrue(script.contains("showPanelLabel = true"),
+                "Script should set showPanelLabel");
+    }
+
+    @Test
+    void testObjectOverlayScriptContainsPanelLabel() {
+        RenderedExportConfig config = new RenderedExportConfig.Builder()
+                .renderMode(RenderedExportConfig.RenderMode.OBJECT_OVERLAY)
+                .includeAnnotations(true)
+                .showPanelLabel(true)
+                .outputDirectory(tempDir)
+                .build();
+
+        String script = ScriptGenerator.generate(ExportCategory.RENDERED, config);
+
+        assertTrue(script.contains("drawPanelLabel"),
+                "Object overlay script should contain drawPanelLabel function");
+    }
+
+    @Test
     void testDensityMapScriptIsAsciiOnly() {
         RenderedExportConfig config = new RenderedExportConfig.Builder()
                 .renderMode(RenderedExportConfig.RenderMode.DENSITY_MAP_OVERLAY)

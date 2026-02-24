@@ -111,6 +111,23 @@ public class QuietPreferences {
     private static final BooleanProperty renderedColorScaleBarBold =
             PathPrefs.createPersistentPreference(PREFIX + "rendered.colorScaleBarBold", true);
 
+    // --- Rendered panel label preferences ---
+
+    private static final BooleanProperty renderedShowPanelLabel =
+            PathPrefs.createPersistentPreference(PREFIX + "rendered.showPanelLabel", false);
+
+    private static final StringProperty renderedPanelLabelText =
+            PathPrefs.createPersistentPreference(PREFIX + "rendered.panelLabelText", "");
+
+    private static final StringProperty renderedPanelLabelPosition =
+            PathPrefs.createPersistentPreference(PREFIX + "rendered.panelLabelPosition", "UPPER_LEFT");
+
+    private static final IntegerProperty renderedPanelLabelFontSize =
+            PathPrefs.createPersistentPreference(PREFIX + "rendered.panelLabelFontSize", 0);
+
+    private static final BooleanProperty renderedPanelLabelBold =
+            PathPrefs.createPersistentPreference(PREFIX + "rendered.panelLabelBold", true);
+
     // --- Mask export preferences ---
 
     private static final StringProperty maskType =
@@ -319,6 +336,28 @@ public class QuietPreferences {
     public static BooleanProperty renderedColorScaleBarBoldProperty() { return renderedColorScaleBarBold; }
     public static boolean isRenderedColorScaleBarBold() { return renderedColorScaleBarBold.get(); }
     public static void setRenderedColorScaleBarBold(boolean value) { renderedColorScaleBarBold.set(value); }
+
+    // --- Panel label ---
+
+    public static BooleanProperty renderedShowPanelLabelProperty() { return renderedShowPanelLabel; }
+    public static boolean isRenderedShowPanelLabel() { return renderedShowPanelLabel.get(); }
+    public static void setRenderedShowPanelLabel(boolean value) { renderedShowPanelLabel.set(value); }
+
+    public static StringProperty renderedPanelLabelTextProperty() { return renderedPanelLabelText; }
+    public static String getRenderedPanelLabelText() { return renderedPanelLabelText.get(); }
+    public static void setRenderedPanelLabelText(String value) { renderedPanelLabelText.set(value != null ? value : ""); }
+
+    public static StringProperty renderedPanelLabelPositionProperty() { return renderedPanelLabelPosition; }
+    public static String getRenderedPanelLabelPosition() { return renderedPanelLabelPosition.get(); }
+    public static void setRenderedPanelLabelPosition(String value) { renderedPanelLabelPosition.set(value != null ? value : "UPPER_LEFT"); }
+
+    public static IntegerProperty renderedPanelLabelFontSizeProperty() { return renderedPanelLabelFontSize; }
+    public static int getRenderedPanelLabelFontSize() { return renderedPanelLabelFontSize.get(); }
+    public static void setRenderedPanelLabelFontSize(int value) { renderedPanelLabelFontSize.set(value); }
+
+    public static BooleanProperty renderedPanelLabelBoldProperty() { return renderedPanelLabelBold; }
+    public static boolean isRenderedPanelLabelBold() { return renderedPanelLabelBold.get(); }
+    public static void setRenderedPanelLabelBold(boolean value) { renderedPanelLabelBold.set(value); }
 
     // ==================== Mask ====================
 

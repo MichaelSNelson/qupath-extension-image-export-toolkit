@@ -65,13 +65,15 @@ public class RenderedImageExporter {
      * @param classifier the pixel classifier to apply as overlay
      * @param config     rendered export configuration
      * @param entryName  the image entry name (used for filename generation)
+     * @param panelIndex zero-based index for auto-incrementing panel labels
      * @throws IOException if the export fails
      * @throws IllegalArgumentException if the classifier does not support this image
      */
     public static void exportWithClassifier(ImageData<BufferedImage> imageData,
                                             PixelClassifier classifier,
                                             RenderedExportConfig config,
-                                            String entryName) throws IOException {
+                                            String entryName,
+                                            int panelIndex) throws IOException {
 
         if (!classifier.supportsImage(imageData)) {
             throw new IllegalArgumentException(
@@ -86,8 +88,9 @@ public class RenderedImageExporter {
             classificationServer = new PixelClassificationImageServer(imageData, classifier);
             displayServer = resolveDisplayServer(imageData, baseServer, config);
 
+            String panelLabel = resolvePanelLabel(config, panelIndex);
             BufferedImage result = renderClassifierComposite(
-                    imageData, baseServer, classificationServer, displayServer, config);
+                    imageData, baseServer, classificationServer, displayServer, config, panelLabel);
 
             String filename = config.buildOutputFilename(entryName);
             File outputFile = new File(config.getOutputDirectory(), filename);
@@ -112,11 +115,13 @@ public class RenderedImageExporter {
      * @param imageData  the image data to export (caller is responsible for closing)
      * @param config     rendered export configuration
      * @param entryName  the image entry name (used for filename generation)
+     * @param panelIndex zero-based index for auto-incrementing panel labels
      * @throws IOException if the export fails
      */
     public static void exportWithObjectOverlay(ImageData<BufferedImage> imageData,
                                                RenderedExportConfig config,
-                                               String entryName) throws IOException {
+                                               String entryName,
+                                               int panelIndex) throws IOException {
 
         ImageServer<BufferedImage> baseServer = imageData.getServer();
         ImageServer<BufferedImage> displayServer = null;
@@ -124,8 +129,9 @@ public class RenderedImageExporter {
         try {
             displayServer = resolveDisplayServer(imageData, baseServer, config);
 
+            String panelLabel = resolvePanelLabel(config, panelIndex);
             BufferedImage result = renderObjectComposite(
-                    imageData, baseServer, displayServer, config);
+                    imageData, baseServer, displayServer, config, panelLabel);
 
             String filename = config.buildOutputFilename(entryName);
             File outputFile = new File(config.getOutputDirectory(), filename);
@@ -147,12 +153,14 @@ public class RenderedImageExporter {
      * @param densityBuilder the density map builder (loaded from project resources)
      * @param config         rendered export configuration
      * @param entryName      the image entry name (used for filename generation)
+     * @param panelIndex     zero-based index for auto-incrementing panel labels
      * @throws IOException if the export fails
      */
     public static void exportWithDensityMap(ImageData<BufferedImage> imageData,
                                              DensityMapBuilder densityBuilder,
                                              RenderedExportConfig config,
-                                             String entryName) throws IOException {
+                                             String entryName,
+                                             int panelIndex) throws IOException {
 
         ImageServer<BufferedImage> baseServer = imageData.getServer();
         ImageServer<BufferedImage> displayServer = null;
@@ -162,8 +170,9 @@ public class RenderedImageExporter {
             densityServer = densityBuilder.buildServer(imageData);
             displayServer = resolveDisplayServer(imageData, baseServer, config);
 
+            String panelLabel = resolvePanelLabel(config, panelIndex);
             BufferedImage result = renderDensityMapComposite(
-                    imageData, baseServer, densityServer, displayServer, config);
+                    imageData, baseServer, densityServer, displayServer, config, panelLabel);
 
             String filename = config.buildOutputFilename(entryName);
             File outputFile = new File(config.getOutputDirectory(), filename);
@@ -189,6 +198,7 @@ public class RenderedImageExporter {
      * @param densityBuilder the density map builder (null for non-DENSITY_MAP modes)
      * @param config         rendered export configuration (must have regionType ALL_ANNOTATIONS)
      * @param entryName      the image entry name (used for filename generation)
+     * @param panelIndex     zero-based starting index for auto-incrementing panel labels
      * @return the number of annotation regions successfully exported
      * @throws IOException if the export fails
      */
@@ -196,7 +206,8 @@ public class RenderedImageExporter {
                                            PixelClassifier classifier,
                                            DensityMapBuilder densityBuilder,
                                            RenderedExportConfig config,
-                                           String entryName) throws IOException {
+                                           String entryName,
+                                           int panelIndex) throws IOException {
 
         ImageServer<BufferedImage> baseServer = imageData.getServer();
         int serverW = baseServer.getWidth();
@@ -250,6 +261,7 @@ public class RenderedImageExporter {
             Map<String, AtomicInteger> classCounters = new LinkedHashMap<>();
             int padding = config.getPaddingPixels();
             int exported = 0;
+            int annotationIndex = 0;
 
             for (PathObject annotation : annotations) {
                 ROI roi = annotation.getROI();
@@ -277,10 +289,11 @@ public class RenderedImageExporter {
                 if (w <= 0 || h <= 0) continue;
 
                 try {
+                    String panelLabel = resolvePanelLabel(config, panelIndex + annotationIndex);
                     BufferedImage regionImage = renderRegion(
                             imageData, baseServer,
                             classificationServer, densityServer, displayServer,
-                            config, x, y, w, h);
+                            config, x, y, w, h, panelLabel);
 
                     // Build classification-based filename suffix
                     PathClass pc = annotation.getPathClass();
@@ -299,6 +312,7 @@ public class RenderedImageExporter {
 
                     logger.debug("Exported annotation region: {}", outputFile.getAbsolutePath());
                     exported++;
+                    annotationIndex++;
 
                 } catch (Exception e) {
                     logger.warn("Failed to export annotation for {}: {}",
@@ -331,7 +345,8 @@ public class RenderedImageExporter {
             ImageServer<BufferedImage> densityServer,
             ImageServer<BufferedImage> displayServer,
             RenderedExportConfig config,
-            int x, int y, int w, int h) throws Exception {
+            int x, int y, int w, int h,
+            String panelLabel) throws Exception {
 
         double downsample = config.getDownsample();
         int outW = (int) Math.ceil(w / downsample);
@@ -410,6 +425,9 @@ public class RenderedImageExporter {
             maybeDrawColorScaleBar(g2d, config, colorMap, minMax[0], minMax[1],
                     baseImage.getWidth(), baseImage.getHeight());
         }
+
+        maybeDrawPanelLabel(g2d, config, panelLabel,
+                baseImage.getWidth(), baseImage.getHeight());
 
         g2d.dispose();
         return result;
@@ -519,12 +537,16 @@ public class RenderedImageExporter {
         try {
             displayServer = resolveDisplayServer(imageData, baseServer, previewConfig);
 
+            // For preview, use fixed text from config or "A" as default
+            String previewLabel = resolvePanelLabel(previewConfig, 0);
+
             if (config.getRenderMode() == RenderedExportConfig.RenderMode.CLASSIFIER_OVERLAY
                     && classifier != null) {
                 classificationServer = new PixelClassificationImageServer(imageData, classifier);
                 try {
                     return renderClassifierComposite(
-                            imageData, baseServer, classificationServer, displayServer, previewConfig);
+                            imageData, baseServer, classificationServer, displayServer,
+                            previewConfig, previewLabel);
                 } catch (Exception e) {
                     throw new IOException("Failed to render classifier preview", e);
                 }
@@ -533,14 +555,15 @@ public class RenderedImageExporter {
                 densityServer = densityBuilder.buildServer(imageData);
                 try {
                     return renderDensityMapComposite(
-                            imageData, baseServer, densityServer, displayServer, previewConfig);
+                            imageData, baseServer, densityServer, displayServer,
+                            previewConfig, previewLabel);
                 } catch (Exception e) {
                     throw new IOException("Failed to render density map preview", e);
                 }
             } else {
                 try {
                     return renderObjectComposite(
-                            imageData, baseServer, displayServer, previewConfig);
+                            imageData, baseServer, displayServer, previewConfig, previewLabel);
                 } catch (Exception e) {
                     throw new IOException("Failed to render object overlay preview", e);
                 }
@@ -585,6 +608,11 @@ public class RenderedImageExporter {
                 .colorScaleBarPosition(config.getColorScaleBarPosition())
                 .colorScaleBarFontSize(config.getColorScaleBarFontSize())
                 .colorScaleBarBoldText(config.isColorScaleBarBoldText())
+                .showPanelLabel(config.isShowPanelLabel())
+                .panelLabelText(config.getPanelLabelText())
+                .panelLabelPosition(config.getPanelLabelPosition())
+                .panelLabelFontSize(config.getPanelLabelFontSize())
+                .panelLabelBold(config.isPanelLabelBold())
                 .build();
     }
 
@@ -634,9 +662,10 @@ public class RenderedImageExporter {
                 densityServer = densityBuilder.buildServer(imageData);
             }
 
+            String previewLabel = resolvePanelLabel(config, 0);
             return renderRegion(imageData, baseServer,
                     classificationServer, densityServer, displayServer,
-                    config, x, y, w, h);
+                    config, x, y, w, h, previewLabel);
 
         } catch (Exception e) {
             throw new IOException("Failed to render per-annotation preview", e);
@@ -665,7 +694,8 @@ public class RenderedImageExporter {
             ImageServer<BufferedImage> baseServer,
             PixelClassificationImageServer classificationServer,
             ImageServer<BufferedImage> displayServer,
-            RenderedExportConfig config) throws Exception {
+            RenderedExportConfig config,
+            String panelLabel) throws Exception {
 
         double downsample = config.getDownsample();
         int outputWidth = (int) Math.ceil(baseServer.getWidth() / downsample);
@@ -714,6 +744,9 @@ public class RenderedImageExporter {
         maybeDrawScaleBar(g2d, imageData, config,
                 baseImage.getWidth(), baseImage.getHeight());
 
+        maybeDrawPanelLabel(g2d, config, panelLabel,
+                baseImage.getWidth(), baseImage.getHeight());
+
         g2d.dispose();
         return result;
     }
@@ -725,7 +758,8 @@ public class RenderedImageExporter {
             ImageData<BufferedImage> imageData,
             ImageServer<BufferedImage> baseServer,
             ImageServer<BufferedImage> displayServer,
-            RenderedExportConfig config) throws Exception {
+            RenderedExportConfig config,
+            String panelLabel) throws Exception {
 
         double downsample = config.getDownsample();
         int outputWidth = (int) Math.ceil(baseServer.getWidth() / downsample);
@@ -760,6 +794,9 @@ public class RenderedImageExporter {
         }
 
         maybeDrawScaleBar(g2d, imageData, config,
+                baseImage.getWidth(), baseImage.getHeight());
+
+        maybeDrawPanelLabel(g2d, config, panelLabel,
                 baseImage.getWidth(), baseImage.getHeight());
 
         g2d.dispose();
@@ -843,7 +880,8 @@ public class RenderedImageExporter {
             ImageServer<BufferedImage> baseServer,
             ImageServer<BufferedImage> densityServer,
             ImageServer<BufferedImage> displayServer,
-            RenderedExportConfig config) throws Exception {
+            RenderedExportConfig config,
+            String panelLabel) throws Exception {
 
         double downsample = config.getDownsample();
         int outputWidth = (int) Math.ceil(baseServer.getWidth() / downsample);
@@ -907,6 +945,9 @@ public class RenderedImageExporter {
                 baseImage.getWidth(), baseImage.getHeight());
 
         maybeDrawColorScaleBar(g2d, config, colorMap, minVal, maxVal,
+                baseImage.getWidth(), baseImage.getHeight());
+
+        maybeDrawPanelLabel(g2d, config, panelLabel,
                 baseImage.getWidth(), baseImage.getHeight());
 
         g2d.dispose();
@@ -1001,6 +1042,35 @@ public class RenderedImageExporter {
                 config.getColorScaleBarPosition(),
                 config.getColorScaleBarFontSize(),
                 config.isColorScaleBarBoldText());
+    }
+
+    /**
+     * Draw a panel label if enabled in the config.
+     */
+    private static void maybeDrawPanelLabel(Graphics2D g2d,
+                                             RenderedExportConfig config,
+                                             String label, int w, int h) {
+        if (!config.isShowPanelLabel()) return;
+        if (label == null || label.isEmpty()) return;
+        g2d.setComposite(AlphaComposite.getInstance(AlphaComposite.SRC_OVER, 1.0f));
+        PanelLabelRenderer.drawPanelLabel(g2d, w, h, label,
+                config.getPanelLabelPosition(),
+                config.getPanelLabelFontSize(),
+                config.isPanelLabelBold(),
+                Color.WHITE);
+    }
+
+    /**
+     * Resolve the panel label text from config and panel index.
+     * If config has fixed text, use it. Otherwise auto-increment from index.
+     */
+    private static String resolvePanelLabel(RenderedExportConfig config, int panelIndex) {
+        if (!config.isShowPanelLabel()) return null;
+        String text = config.getPanelLabelText();
+        if (text != null && !text.isBlank()) {
+            return text;
+        }
+        return PanelLabelRenderer.labelForIndex(panelIndex);
     }
 
     private static void closeQuietly(AutoCloseable closeable, String context) {

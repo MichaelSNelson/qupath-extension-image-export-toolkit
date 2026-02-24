@@ -327,6 +327,83 @@ class RenderedScriptGenerator {
     }
 
     // ------------------------------------------------------------------
+    // Panel label helpers
+    // ------------------------------------------------------------------
+
+    /**
+     * Emit panel label configuration variables.
+     */
+    private static void emitPanelLabelConfig(StringBuilder sb, RenderedExportConfig config) {
+        appendLine(sb, "def showPanelLabel = " + config.isShowPanelLabel());
+        String text = config.getPanelLabelText();
+        appendLine(sb, "def panelLabelText = " + (text != null && !text.isBlank() ? quote(text) : "null"));
+        appendLine(sb, "def panelLabelPosition = " + quote(config.getPanelLabelPosition().name()));
+        appendLine(sb, "def panelLabelFontSize = " + config.getPanelLabelFontSize());
+        appendLine(sb, "def panelLabelBold = " + config.isPanelLabelBold());
+    }
+
+    /**
+     * Emit a self-contained drawPanelLabel Groovy function.
+     * Uses the same 8-direction outlined text technique as the scale bar.
+     */
+    private static void emitPanelLabelFunction(StringBuilder sb) {
+        appendLine(sb, "// Panel label drawing function");
+        appendLine(sb, "def drawPanelLabel(Graphics2D g2d, int imgW, int imgH, String label, String pos, int fSize, boolean bold) {");
+        appendLine(sb, "    if (label == null || label.isEmpty()) return");
+        appendLine(sb, "    int minDim = Math.min(imgW, imgH)");
+        appendLine(sb, "    int fontSize = fSize > 0 ? Math.max(4, Math.min(fSize, 200)) : Math.max(14, minDim / 25)");
+        appendLine(sb, "    int margin = Math.max(10, minDim / 40)");
+        appendLine(sb, "    int fontStyle = bold ? Font.BOLD : Font.PLAIN");
+        appendLine(sb, "    g2d.setFont(new Font(Font.SANS_SERIF, fontStyle, fontSize))");
+        appendLine(sb, "    def fm = g2d.getFontMetrics()");
+        appendLine(sb, "    int tw = fm.stringWidth(label)");
+        appendLine(sb, "    int ta = fm.getAscent()");
+        appendLine(sb, "    int tx, ty");
+        appendLine(sb, "    switch (pos) {");
+        appendLine(sb, "        case 'LOWER_LEFT': tx = margin; ty = imgH - margin; break");
+        appendLine(sb, "        case 'UPPER_RIGHT': tx = imgW - margin - tw; ty = margin + ta; break");
+        appendLine(sb, "        case 'UPPER_LEFT': tx = margin; ty = margin + ta; break");
+        appendLine(sb, "        default: tx = imgW - margin - tw; ty = imgH - margin; break");
+        appendLine(sb, "    }");
+        appendLine(sb, "    def primary = Color.WHITE");
+        appendLine(sb, "    def outline = Color.BLACK");
+        appendLine(sb, "    for (int dx = -1; dx <= 1; dx++) {");
+        appendLine(sb, "        for (int dy = -1; dy <= 1; dy++) {");
+        appendLine(sb, "            if (dx != 0 || dy != 0) { g2d.setColor(outline); g2d.drawString(label, tx + dx, ty + dy) }");
+        appendLine(sb, "        }");
+        appendLine(sb, "    }");
+        appendLine(sb, "    g2d.setColor(primary)");
+        appendLine(sb, "    g2d.drawString(label, tx, ty)");
+        appendLine(sb, "}");
+        appendLine(sb, "");
+    }
+
+    /**
+     * Emit per-image panel label drawing code (whole-image path).
+     * Uses variable 'i' from the for loop as the auto-increment index.
+     */
+    private static void emitPanelLabelDrawing(StringBuilder sb) {
+        appendLine(sb, "        if (showPanelLabel) {");
+        appendLine(sb, "            def label = panelLabelText != null ? panelLabelText : String.valueOf((char)('A' + (i % 26)))");
+        appendLine(sb, "            g2d.setComposite(java.awt.AlphaComposite.getInstance(java.awt.AlphaComposite.SRC_OVER, 1.0f))");
+        appendLine(sb, "            drawPanelLabel(g2d, outW, outH, label, panelLabelPosition, panelLabelFontSize, panelLabelBold)");
+        appendLine(sb, "        }");
+    }
+
+    /**
+     * Emit per-annotation panel label drawing code.
+     * Uses a running 'annotationIndex' counter for auto-increment.
+     */
+    private static void emitAnnotationPanelLabelDrawing(StringBuilder sb) {
+        appendLine(sb, "            if (showPanelLabel) {");
+        appendLine(sb, "                def label = panelLabelText != null ? panelLabelText : String.valueOf((char)('A' + (annotationIndex % 26)))");
+        appendLine(sb, "                g2d.setComposite(java.awt.AlphaComposite.getInstance(java.awt.AlphaComposite.SRC_OVER, 1.0f))");
+        appendLine(sb, "                drawPanelLabel(g2d, outW, outH, label, panelLabelPosition, panelLabelFontSize, panelLabelBold)");
+        appendLine(sb, "                annotationIndex++");
+        appendLine(sb, "            }");
+    }
+
+    // ------------------------------------------------------------------
     // Per-annotation region helpers
     // ------------------------------------------------------------------
 
@@ -368,6 +445,7 @@ class RenderedScriptGenerator {
      * After this, the script is inside a loop with variables: annotation, x, y, w, h, suffix.
      */
     private static void emitAnnotationLoopOpen(StringBuilder sb) {
+        appendLine(sb, "        int annotationIndex = 0");
         appendLine(sb, "        // Collect and filter annotations");
         appendLine(sb, "        def allAnnotations = imageData.getHierarchy().getAnnotationObjects()");
         appendLine(sb, "        def annotations = allAnnotations");
@@ -534,6 +612,7 @@ class RenderedScriptGenerator {
         appendLine(sb, "def showNames = " + config.isShowNames());
         emitScaleBarConfig(sb, config);
         emitColorScaleBarConfig(sb, config);
+        emitPanelLabelConfig(sb, config);
         appendLine(sb, "// =======================================================");
         appendLine(sb, "");
 
@@ -581,6 +660,9 @@ class RenderedScriptGenerator {
         }
         if (config.isShowColorScaleBar()) {
             emitColorScaleBarFunction(sb);
+        }
+        if (config.isShowPanelLabel()) {
+            emitPanelLabelFunction(sb);
         }
 
         // Main processing loop
@@ -659,6 +741,10 @@ class RenderedScriptGenerator {
                 appendLine(sb, "            }");
                 appendLine(sb, "");
             }
+            if (config.isShowPanelLabel()) {
+                emitAnnotationPanelLabelDrawing(sb);
+                appendLine(sb, "");
+            }
             emitAnnotationLoopClose(sb);
         } else {
             // Whole-image density map rendering path (existing code)
@@ -732,6 +818,10 @@ class RenderedScriptGenerator {
             }
             if (config.isShowColorScaleBar()) {
                 emitColorScaleBarDrawing(sb);
+                appendLine(sb, "");
+            }
+            if (config.isShowPanelLabel()) {
+                emitPanelLabelDrawing(sb);
                 appendLine(sb, "");
             }
             appendLine(sb, "        g2d.dispose()");
@@ -816,6 +906,7 @@ class RenderedScriptGenerator {
         appendLine(sb, "def fillAnnotations = " + config.isFillAnnotations());
         appendLine(sb, "def showNames = " + config.isShowNames());
         emitScaleBarConfig(sb, config);
+        emitPanelLabelConfig(sb, config);
         appendLine(sb, "// =======================================================");
         appendLine(sb, "");
 
@@ -844,6 +935,9 @@ class RenderedScriptGenerator {
         // Scale bar function (before the main loop)
         if (config.isShowScaleBar()) {
             emitScaleBarFunction(sb);
+        }
+        if (config.isShowPanelLabel()) {
+            emitPanelLabelFunction(sb);
         }
 
         // Main processing loop
@@ -902,6 +996,10 @@ class RenderedScriptGenerator {
                 emitAnnotationScaleBarDrawing(sb);
                 appendLine(sb, "");
             }
+            if (config.isShowPanelLabel()) {
+                emitAnnotationPanelLabelDrawing(sb);
+                appendLine(sb, "");
+            }
             emitAnnotationLoopClose(sb);
         } else {
             // Whole-image classifier rendering path (existing code)
@@ -954,6 +1052,10 @@ class RenderedScriptGenerator {
             appendLine(sb, "");
             if (config.isShowScaleBar()) {
                 emitScaleBarDrawing(sb);
+                appendLine(sb, "");
+            }
+            if (config.isShowPanelLabel()) {
+                emitPanelLabelDrawing(sb);
                 appendLine(sb, "");
             }
             appendLine(sb, "        g2d.dispose()");
@@ -1036,6 +1138,7 @@ class RenderedScriptGenerator {
         appendLine(sb, "def fillAnnotations = " + config.isFillAnnotations());
         appendLine(sb, "def showNames = " + config.isShowNames());
         emitScaleBarConfig(sb, config);
+        emitPanelLabelConfig(sb, config);
         appendLine(sb, "// =======================================================");
         appendLine(sb, "");
 
@@ -1058,6 +1161,9 @@ class RenderedScriptGenerator {
         // Scale bar function (before the main loop)
         if (config.isShowScaleBar()) {
             emitScaleBarFunction(sb);
+        }
+        if (config.isShowPanelLabel()) {
+            emitPanelLabelFunction(sb);
         }
 
         // Main processing loop
@@ -1097,6 +1203,10 @@ class RenderedScriptGenerator {
             appendLine(sb, "");
             if (config.isShowScaleBar()) {
                 emitAnnotationScaleBarDrawing(sb);
+                appendLine(sb, "");
+            }
+            if (config.isShowPanelLabel()) {
+                emitAnnotationPanelLabelDrawing(sb);
                 appendLine(sb, "");
             }
             emitAnnotationLoopClose(sb);
@@ -1139,6 +1249,10 @@ class RenderedScriptGenerator {
             appendLine(sb, "");
             if (config.isShowScaleBar()) {
                 emitScaleBarDrawing(sb);
+                appendLine(sb, "");
+            }
+            if (config.isShowPanelLabel()) {
+                emitPanelLabelDrawing(sb);
                 appendLine(sb, "");
             }
             appendLine(sb, "        g2d.dispose()");

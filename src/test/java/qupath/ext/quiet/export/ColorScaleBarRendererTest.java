@@ -109,9 +109,9 @@ class ColorScaleBarRendererTest {
     @Test
     void testLuminanceContrastDetection() {
         // White -> dark outline (BLACK)
-        assertEquals(Color.BLACK, ColorScaleBarRenderer.computeOutlineColor(Color.WHITE));
+        assertEquals(Color.BLACK, TextRenderUtils.computeOutlineColor(Color.WHITE));
         // Black -> light outline (WHITE)
-        assertEquals(Color.WHITE, ColorScaleBarRenderer.computeOutlineColor(Color.BLACK));
+        assertEquals(Color.WHITE, TextRenderUtils.computeOutlineColor(Color.BLACK));
     }
 
     /**

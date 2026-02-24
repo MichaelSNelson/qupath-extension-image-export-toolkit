@@ -145,7 +145,7 @@ public class BatchExportTask extends Task<ExportResult> {
                 imageData = entry.readImageData();
 
                 switch (category) {
-                    case RENDERED -> exportRendered(imageData, entryName);
+                    case RENDERED -> exportRendered(imageData, entryName, i);
                     case MASK -> MaskImageExporter.exportMask(imageData, maskConfig, entryName);
                     case RAW -> RawImageExporter.exportRaw(imageData, rawConfig, entryName);
                     case TILED -> TiledImageExporter.exportTiled(imageData, tiledConfig, entryName);
@@ -205,25 +205,26 @@ public class BatchExportTask extends Task<ExportResult> {
         return new ExportResult(succeeded, failed, skipped, errors);
     }
 
-    private void exportRendered(ImageData<BufferedImage> imageData, String entryName)
-            throws Exception {
+    private void exportRendered(ImageData<BufferedImage> imageData, String entryName,
+                                int panelIndex) throws Exception {
         if (renderedConfig.getRegionType() == RenderedExportConfig.RegionType.ALL_ANNOTATIONS) {
             RenderedImageExporter.exportPerAnnotation(
-                    imageData, classifier, densityBuilder, renderedConfig, entryName);
+                    imageData, classifier, densityBuilder, renderedConfig, entryName, panelIndex);
         } else {
             switch (renderedConfig.getRenderMode()) {
                 case OBJECT_OVERLAY ->
-                    RenderedImageExporter.exportWithObjectOverlay(imageData, renderedConfig, entryName);
+                    RenderedImageExporter.exportWithObjectOverlay(
+                            imageData, renderedConfig, entryName, panelIndex);
                 case DENSITY_MAP_OVERLAY ->
                     RenderedImageExporter.exportWithDensityMap(
-                            imageData, densityBuilder, renderedConfig, entryName);
+                            imageData, densityBuilder, renderedConfig, entryName, panelIndex);
                 case CLASSIFIER_OVERLAY -> {
                     if (!classifier.supportsImage(imageData)) {
                         throw new IllegalArgumentException(
                                 "Classifier does not support image: " + entryName);
                     }
                     RenderedImageExporter.exportWithClassifier(
-                            imageData, classifier, renderedConfig, entryName);
+                            imageData, classifier, renderedConfig, entryName, panelIndex);
                 }
             }
         }

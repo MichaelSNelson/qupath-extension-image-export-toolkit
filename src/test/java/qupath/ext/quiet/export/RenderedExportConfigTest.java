@@ -284,6 +284,39 @@ class RenderedExportConfigTest {
     }
 
     @Test
+    void testPanelLabelDefaults() {
+        RenderedExportConfig config = new RenderedExportConfig.Builder()
+                .classifierName("test")
+                .outputDirectory(tempDir)
+                .build();
+
+        assertFalse(config.isShowPanelLabel());
+        assertNull(config.getPanelLabelText());
+        assertEquals(ScaleBarRenderer.Position.UPPER_LEFT, config.getPanelLabelPosition());
+        assertEquals(0, config.getPanelLabelFontSize());
+        assertTrue(config.isPanelLabelBold());
+    }
+
+    @Test
+    void testPanelLabelSettings() {
+        RenderedExportConfig config = new RenderedExportConfig.Builder()
+                .classifierName("test")
+                .showPanelLabel(true)
+                .panelLabelText("A")
+                .panelLabelPosition(ScaleBarRenderer.Position.LOWER_RIGHT)
+                .panelLabelFontSize(28)
+                .panelLabelBold(false)
+                .outputDirectory(tempDir)
+                .build();
+
+        assertTrue(config.isShowPanelLabel());
+        assertEquals("A", config.getPanelLabelText());
+        assertEquals(ScaleBarRenderer.Position.LOWER_RIGHT, config.getPanelLabelPosition());
+        assertEquals(28, config.getPanelLabelFontSize());
+        assertFalse(config.isPanelLabelBold());
+    }
+
+    @Test
     void testColorScaleBarSettings() {
         RenderedExportConfig config = new RenderedExportConfig.Builder()
                 .renderMode(RenderedExportConfig.RenderMode.DENSITY_MAP_OVERLAY)
