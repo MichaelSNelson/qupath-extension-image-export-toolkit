@@ -123,7 +123,10 @@ public class RawConfigPane extends VBox {
 
         // Format
         grid.add(new Label(resources.getString("raw.label.format")), 0, row);
-        formatCombo = new ComboBox<>(FXCollections.observableArrayList(OutputFormat.values()));
+        formatCombo = new ComboBox<>(FXCollections.observableArrayList(
+                java.util.Arrays.stream(OutputFormat.values())
+                        .filter(f -> f != OutputFormat.SVG)
+                        .toList()));
         formatCombo.setValue(OutputFormat.TIFF);
         grid.add(formatCombo, 1, row);
         row++;

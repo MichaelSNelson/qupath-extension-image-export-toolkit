@@ -20,6 +20,19 @@ class RenderedScriptGenerator {
         // Utility class
     }
 
+    /**
+     * Emit the output format config line, falling back to PNG if SVG is selected
+     * (SVG requires JFreeSVG which may not be on the script classpath).
+     */
+    private static void emitOutputFormat(StringBuilder sb, RenderedExportConfig config) {
+        if (config.getFormat() == OutputFormat.SVG) {
+            appendLine(sb, "// NOTE: SVG export requires the QuIET extension. Falling back to PNG for script.");
+            appendLine(sb, "def outputFormat = " + quote(OutputFormat.PNG.getExtension()));
+        } else {
+            appendLine(sb, "def outputFormat = " + quote(config.getFormat().getExtension()));
+        }
+    }
+
     static String generate(RenderedExportConfig config) {
         return switch (config.getRenderMode()) {
             case OBJECT_OVERLAY -> generateObjectOverlayScript(config);
@@ -604,7 +617,7 @@ class RenderedScriptGenerator {
         emitDisplayConfig(sb, config);
         appendLine(sb, "def overlayOpacity = " + config.getOverlayOpacity());
         appendLine(sb, "def downsample = " + config.getDownsample());
-        appendLine(sb, "def outputFormat = " + quote(config.getFormat().getExtension()));
+        emitOutputFormat(sb, config);
         appendLine(sb, "def outputDir = " + quote(config.getOutputDirectory().getAbsolutePath()));
         appendLine(sb, "def includeAnnotations = " + config.isIncludeAnnotations());
         appendLine(sb, "def includeDetections = " + config.isIncludeDetections());
@@ -899,7 +912,7 @@ class RenderedScriptGenerator {
         emitDisplayConfig(sb, config);
         appendLine(sb, "def overlayOpacity = " + config.getOverlayOpacity());
         appendLine(sb, "def downsample = " + config.getDownsample());
-        appendLine(sb, "def outputFormat = " + quote(config.getFormat().getExtension()));
+        emitOutputFormat(sb, config);
         appendLine(sb, "def outputDir = " + quote(config.getOutputDirectory().getAbsolutePath()));
         appendLine(sb, "def includeAnnotations = " + config.isIncludeAnnotations());
         appendLine(sb, "def includeDetections = " + config.isIncludeDetections());
@@ -1131,7 +1144,7 @@ class RenderedScriptGenerator {
         emitDisplayConfig(sb, config);
         appendLine(sb, "def overlayOpacity = " + config.getOverlayOpacity());
         appendLine(sb, "def downsample = " + config.getDownsample());
-        appendLine(sb, "def outputFormat = " + quote(config.getFormat().getExtension()));
+        emitOutputFormat(sb, config);
         appendLine(sb, "def outputDir = " + quote(config.getOutputDirectory().getAbsolutePath()));
         appendLine(sb, "def includeAnnotations = " + config.isIncludeAnnotations());
         appendLine(sb, "def includeDetections = " + config.isIncludeDetections());

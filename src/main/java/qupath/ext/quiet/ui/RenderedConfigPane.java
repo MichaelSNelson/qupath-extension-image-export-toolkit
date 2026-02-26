@@ -118,6 +118,9 @@ public class RenderedConfigPane extends GridPane {
     private Label panelLabelFontSizeLabel;
     private CheckBox panelLabelBoldCheck;
 
+    // Format info label
+    private Label formatInfoLabel;
+
     // Controls needing visibility toggling
     private Label classifierLabel;
     private HBox classifierBox;
@@ -316,6 +319,17 @@ public class RenderedConfigPane extends GridPane {
         formatCombo.setValue(OutputFormat.PNG);
         add(formatCombo, 1, row);
         row++;
+
+        // Format info label
+        formatInfoLabel = new Label();
+        formatInfoLabel.setWrapText(true);
+        formatInfoLabel.setMaxWidth(400);
+        formatInfoLabel.setStyle("-fx-font-size: 11; -fx-text-fill: #666666;");
+        add(formatInfoLabel, 1, row);
+        row++;
+
+        formatCombo.valueProperty().addListener((obs, old, val) -> updateFormatInfo(val));
+        updateFormatInfo(OutputFormat.PNG);
 
         // Classification filter (ALL_ANNOTATIONS mode only)
         classificationFilterLabel = new Label(resources.getString("rendered.label.classificationFilter"));
@@ -581,20 +595,35 @@ public class RenderedConfigPane extends GridPane {
         add(previewButton, 0, row, 2, 1);
         row++;
 
-        // Scale bar visibility toggling
+        // Scale bar visibility toggling + SVG auto-default
         showScaleBarCheck.selectedProperty().addListener(
-                (obs, oldVal, newVal) -> updateScaleBarVisibility(newVal));
+                (obs, oldVal, newVal) -> {
+                    if (newVal) maybeSwitchToSvg();
+                    updateScaleBarVisibility(newVal);
+                });
         updateScaleBarVisibility(false);
 
-        // Color scale bar visibility toggling
+        // Color scale bar visibility toggling + SVG auto-default
         showColorScaleBarCheck.selectedProperty().addListener(
-                (obs, oldVal, newVal) -> updateColorScaleBarVisibility(newVal));
+                (obs, oldVal, newVal) -> {
+                    if (newVal) maybeSwitchToSvg();
+                    updateColorScaleBarVisibility(newVal);
+                });
         updateColorScaleBarVisibility(false);
 
-        // Panel label visibility toggling
+        // Panel label visibility toggling + SVG auto-default
         showPanelLabelCheck.selectedProperty().addListener(
-                (obs, oldVal, newVal) -> updatePanelLabelVisibility(newVal));
+                (obs, oldVal, newVal) -> {
+                    if (newVal) maybeSwitchToSvg();
+                    updatePanelLabelVisibility(newVal);
+                });
         updatePanelLabelVisibility(false);
+
+        // Object overlay SVG auto-default
+        includeAnnotationsCheck.selectedProperty().addListener(
+                (obs, oldVal, newVal) -> { if (newVal) maybeSwitchToSvg(); });
+        includeDetectionsCheck.selectedProperty().addListener(
+                (obs, oldVal, newVal) -> { if (newVal) maybeSwitchToSvg(); });
 
         // Preview button enabled state depends on image being open
         updatePreviewButtonState();
@@ -691,6 +720,34 @@ public class RenderedConfigPane extends GridPane {
         panelLabelFontSizeSpinner.setManaged(show);
         panelLabelBoldCheck.setVisible(show);
         panelLabelBoldCheck.setManaged(show);
+    }
+
+    private void updateFormatInfo(OutputFormat format) {
+        if (format == null) {
+            formatInfoLabel.setText("");
+            formatInfoLabel.setVisible(false);
+            formatInfoLabel.setManaged(false);
+            return;
+        }
+        if (format == OutputFormat.SVG) {
+            formatInfoLabel.setText(resources.getString("rendered.format.info.svg"));
+            formatInfoLabel.setVisible(true);
+            formatInfoLabel.setManaged(true);
+        } else {
+            formatInfoLabel.setText("");
+            formatInfoLabel.setVisible(false);
+            formatInfoLabel.setManaged(false);
+        }
+    }
+
+    /**
+     * When an overlay is enabled and format is the default PNG,
+     * auto-switch to SVG for vector-sharp overlays.
+     */
+    private void maybeSwitchToSvg() {
+        if (formatCombo.getValue() == OutputFormat.PNG) {
+            formatCombo.setValue(OutputFormat.SVG);
+        }
     }
 
     private void updateRegionTypeVisibility(RenderedExportConfig.RegionType regionType) {

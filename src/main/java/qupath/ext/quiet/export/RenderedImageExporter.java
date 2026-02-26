@@ -8,11 +8,15 @@ import java.awt.image.BufferedImage;
 import java.awt.image.WritableRaster;
 import java.io.File;
 import java.io.IOException;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
 import java.util.Collection;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicInteger;
+
+import org.jfree.svg.SVGGraphics2D;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -89,12 +93,20 @@ public class RenderedImageExporter {
             displayServer = resolveDisplayServer(imageData, baseServer, config);
 
             String panelLabel = resolvePanelLabel(config, panelIndex);
-            BufferedImage result = renderClassifierComposite(
-                    imageData, baseServer, classificationServer, displayServer, config, panelLabel);
-
             String filename = config.buildOutputFilename(entryName);
             File outputFile = new File(config.getOutputDirectory(), filename);
-            ImageWriterTools.writeImage(result, outputFile.getAbsolutePath());
+
+            if (config.getFormat() == OutputFormat.SVG) {
+                String svg = renderRegionToSvg(imageData, baseServer,
+                        classificationServer, null, displayServer, config,
+                        0, 0, baseServer.getWidth(), baseServer.getHeight(), panelLabel);
+                writeSvg(svg, outputFile);
+            } else {
+                BufferedImage result = renderClassifierComposite(
+                        imageData, baseServer, classificationServer, displayServer,
+                        config, panelLabel);
+                ImageWriterTools.writeImage(result, outputFile.getAbsolutePath());
+            }
 
             logger.info("Exported: {}", outputFile.getAbsolutePath());
 
@@ -130,12 +142,19 @@ public class RenderedImageExporter {
             displayServer = resolveDisplayServer(imageData, baseServer, config);
 
             String panelLabel = resolvePanelLabel(config, panelIndex);
-            BufferedImage result = renderObjectComposite(
-                    imageData, baseServer, displayServer, config, panelLabel);
-
             String filename = config.buildOutputFilename(entryName);
             File outputFile = new File(config.getOutputDirectory(), filename);
-            ImageWriterTools.writeImage(result, outputFile.getAbsolutePath());
+
+            if (config.getFormat() == OutputFormat.SVG) {
+                String svg = renderRegionToSvg(imageData, baseServer,
+                        null, null, displayServer, config,
+                        0, 0, baseServer.getWidth(), baseServer.getHeight(), panelLabel);
+                writeSvg(svg, outputFile);
+            } else {
+                BufferedImage result = renderObjectComposite(
+                        imageData, baseServer, displayServer, config, panelLabel);
+                ImageWriterTools.writeImage(result, outputFile.getAbsolutePath());
+            }
 
             logger.info("Exported: {}", outputFile.getAbsolutePath());
 
@@ -171,12 +190,20 @@ public class RenderedImageExporter {
             displayServer = resolveDisplayServer(imageData, baseServer, config);
 
             String panelLabel = resolvePanelLabel(config, panelIndex);
-            BufferedImage result = renderDensityMapComposite(
-                    imageData, baseServer, densityServer, displayServer, config, panelLabel);
-
             String filename = config.buildOutputFilename(entryName);
             File outputFile = new File(config.getOutputDirectory(), filename);
-            ImageWriterTools.writeImage(result, outputFile.getAbsolutePath());
+
+            if (config.getFormat() == OutputFormat.SVG) {
+                String svg = renderRegionToSvg(imageData, baseServer,
+                        null, densityServer, displayServer, config,
+                        0, 0, baseServer.getWidth(), baseServer.getHeight(), panelLabel);
+                writeSvg(svg, outputFile);
+            } else {
+                BufferedImage result = renderDensityMapComposite(
+                        imageData, baseServer, densityServer, displayServer,
+                        config, panelLabel);
+                ImageWriterTools.writeImage(result, outputFile.getAbsolutePath());
+            }
 
             logger.info("Exported: {}", outputFile.getAbsolutePath());
 
@@ -290,10 +317,6 @@ public class RenderedImageExporter {
 
                 try {
                     String panelLabel = resolvePanelLabel(config, panelIndex + annotationIndex);
-                    BufferedImage regionImage = renderRegion(
-                            imageData, baseServer,
-                            classificationServer, densityServer, displayServer,
-                            config, x, y, w, h, panelLabel);
 
                     // Build classification-based filename suffix
                     PathClass pc = annotation.getPathClass();
@@ -308,7 +331,19 @@ public class RenderedImageExporter {
 
                     String filename = config.buildOutputFilename(entryName, suffix);
                     File outputFile = new File(config.getOutputDirectory(), filename);
-                    ImageWriterTools.writeImage(regionImage, outputFile.getAbsolutePath());
+
+                    if (config.getFormat() == OutputFormat.SVG) {
+                        String svg = renderRegionToSvg(imageData, baseServer,
+                                classificationServer, densityServer, displayServer,
+                                config, x, y, w, h, panelLabel);
+                        writeSvg(svg, outputFile);
+                    } else {
+                        BufferedImage regionImage = renderRegion(
+                                imageData, baseServer,
+                                classificationServer, densityServer, displayServer,
+                                config, x, y, w, h, panelLabel);
+                        ImageWriterTools.writeImage(regionImage, outputFile.getAbsolutePath());
+                    }
 
                     logger.debug("Exported annotation region: {}", outputFile.getAbsolutePath());
                     exported++;
@@ -335,22 +370,19 @@ public class RenderedImageExporter {
     }
 
     /**
-     * Render a specific region of the image with overlays composited on top.
-     * Handles all three render modes (classifier, object overlay, density map).
+     * Render the raster layers (base image + classifier/density overlay) for a region.
+     * Does NOT draw vector overlays (objects, scale bar, panel label).
      */
-    private static BufferedImage renderRegion(
+    private static BufferedImage renderRasterLayers(
             ImageData<BufferedImage> imageData,
             ImageServer<BufferedImage> baseServer,
             PixelClassificationImageServer classificationServer,
             ImageServer<BufferedImage> densityServer,
             ImageServer<BufferedImage> displayServer,
             RenderedExportConfig config,
-            int x, int y, int w, int h,
-            String panelLabel) throws Exception {
+            int x, int y, int w, int h) throws Exception {
 
         double downsample = config.getDownsample();
-        int outW = (int) Math.ceil(w / downsample);
-        int outH = (int) Math.ceil(h / downsample);
 
         // Read base image region
         ImageServer<BufferedImage> readServer =
@@ -401,36 +433,125 @@ public class RenderedImageExporter {
             }
         }
 
+        g2d.dispose();
+        return result;
+    }
+
+    /**
+     * Draw all vector-appropriate overlays onto a Graphics2D context.
+     * This includes object overlays, scale bar, color scale bar, and panel label.
+     */
+    private static void drawVectorOverlays(
+            Graphics2D g2d,
+            ImageData<BufferedImage> imageData,
+            ImageServer<BufferedImage> densityServer,
+            RenderedExportConfig config,
+            int regionX, int regionY, int regionW, int regionH,
+            int imageWidth, int imageHeight,
+            String panelLabel,
+            double downsample) throws Exception {
+
         // Paint object overlays with region offset
         if (config.isIncludeAnnotations() || config.isIncludeDetections()) {
             g2d.setComposite(AlphaComposite.getInstance(
                     AlphaComposite.SRC_OVER, 1.0f));
-            paintObjectsInRegion(g2d, imageData, downsample, x, y, w, h,
+            paintObjectsInRegion(g2d, imageData, downsample,
+                    regionX, regionY, regionW, regionH,
                     config.isIncludeAnnotations(), config.isIncludeDetections(),
                     config.isFillAnnotations(), config.isShowNames());
         }
 
         // Scale bar
-        maybeDrawScaleBar(g2d, imageData, config,
-                baseImage.getWidth(), baseImage.getHeight());
+        maybeDrawScaleBar(g2d, imageData, config, imageWidth, imageHeight);
 
         // Color scale bar for density map mode
         if (densityServer != null && config.isShowColorScaleBar()) {
             ColorMaps.ColorMap colorMap = resolveColorMap(config.getColormapName());
-            // Re-read density for min/max (already cached in memory)
             RegionRequest densityRequest = RegionRequest.createInstance(
-                    densityServer.getPath(), downsample, x, y, w, h);
+                    densityServer.getPath(), downsample,
+                    regionX, regionY, regionW, regionH);
             BufferedImage densityImage = densityServer.readRegion(densityRequest);
             double[] minMax = computeMinMax(densityImage);
             maybeDrawColorScaleBar(g2d, config, colorMap, minMax[0], minMax[1],
-                    baseImage.getWidth(), baseImage.getHeight());
+                    imageWidth, imageHeight);
         }
 
-        maybeDrawPanelLabel(g2d, config, panelLabel,
-                baseImage.getWidth(), baseImage.getHeight());
+        maybeDrawPanelLabel(g2d, config, panelLabel, imageWidth, imageHeight);
+    }
+
+    /**
+     * Render a specific region of the image with overlays composited on top.
+     * Handles all three render modes (classifier, object overlay, density map).
+     */
+    private static BufferedImage renderRegion(
+            ImageData<BufferedImage> imageData,
+            ImageServer<BufferedImage> baseServer,
+            PixelClassificationImageServer classificationServer,
+            ImageServer<BufferedImage> densityServer,
+            ImageServer<BufferedImage> displayServer,
+            RenderedExportConfig config,
+            int x, int y, int w, int h,
+            String panelLabel) throws Exception {
+
+        BufferedImage raster = renderRasterLayers(
+                imageData, baseServer, classificationServer, densityServer,
+                displayServer, config, x, y, w, h);
+
+        Graphics2D g2d = raster.createGraphics();
+        g2d.setRenderingHint(
+                RenderingHints.KEY_INTERPOLATION,
+                RenderingHints.VALUE_INTERPOLATION_BILINEAR);
+
+        drawVectorOverlays(g2d, imageData, densityServer, config,
+                x, y, w, h,
+                raster.getWidth(), raster.getHeight(),
+                panelLabel, config.getDownsample());
 
         g2d.dispose();
-        return result;
+        return raster;
+    }
+
+    /**
+     * Render a region as an SVG document with raster base embedded as PNG
+     * and vector overlays (annotations, scale bar, labels) as native SVG elements.
+     */
+    private static String renderRegionToSvg(
+            ImageData<BufferedImage> imageData,
+            ImageServer<BufferedImage> baseServer,
+            PixelClassificationImageServer classificationServer,
+            ImageServer<BufferedImage> densityServer,
+            ImageServer<BufferedImage> displayServer,
+            RenderedExportConfig config,
+            int x, int y, int w, int h,
+            String panelLabel) throws Exception {
+
+        BufferedImage raster = renderRasterLayers(
+                imageData, baseServer, classificationServer, densityServer,
+                displayServer, config, x, y, w, h);
+
+        SVGGraphics2D svgG2d = new SVGGraphics2D(raster.getWidth(), raster.getHeight());
+        svgG2d.setRenderingHint(
+                RenderingHints.KEY_INTERPOLATION,
+                RenderingHints.VALUE_INTERPOLATION_BILINEAR);
+
+        // Embed raster base as PNG inside SVG
+        svgG2d.drawImage(raster, 0, 0, null);
+
+        // Draw overlays as SVG vector elements
+        drawVectorOverlays(svgG2d, imageData, densityServer, config,
+                x, y, w, h,
+                raster.getWidth(), raster.getHeight(),
+                panelLabel, config.getDownsample());
+
+        svgG2d.dispose();
+        return svgG2d.getSVGDocument();
+    }
+
+    /**
+     * Write an SVG document string to a file.
+     */
+    private static void writeSvg(String svgDocument, File outputFile) throws IOException {
+        Files.writeString(outputFile.toPath(), svgDocument, StandardCharsets.UTF_8);
     }
 
     /**

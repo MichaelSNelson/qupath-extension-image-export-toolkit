@@ -41,6 +41,8 @@ public class BatchExportTask extends Task<ExportResult> {
     private final String workflowScript;
     private final boolean exportGeoJson;
     private final File outputDirectory;
+    private final String filenamePrefix;
+    private final String filenameSuffix;
 
     /**
      * Create a batch export task for rendered exports.
@@ -50,10 +52,12 @@ public class BatchExportTask extends Task<ExportResult> {
                                               PixelClassifier classifier,
                                               DensityMapBuilder densityBuilder,
                                               String workflowScript,
-                                              boolean exportGeoJson) {
+                                              boolean exportGeoJson,
+                                              String filenamePrefix,
+                                              String filenameSuffix) {
         return new BatchExportTask(entries, ExportCategory.RENDERED,
                 config, null, null, null, classifier, densityBuilder, workflowScript,
-                exportGeoJson, config.getOutputDirectory());
+                exportGeoJson, config.getOutputDirectory(), filenamePrefix, filenameSuffix);
     }
 
     /**
@@ -62,10 +66,12 @@ public class BatchExportTask extends Task<ExportResult> {
     public static BatchExportTask forMask(List<ProjectImageEntry<BufferedImage>> entries,
                                           MaskExportConfig config,
                                           String workflowScript,
-                                          boolean exportGeoJson) {
+                                          boolean exportGeoJson,
+                                          String filenamePrefix,
+                                          String filenameSuffix) {
         return new BatchExportTask(entries, ExportCategory.MASK,
                 null, config, null, null, null, null, workflowScript,
-                exportGeoJson, config.getOutputDirectory());
+                exportGeoJson, config.getOutputDirectory(), filenamePrefix, filenameSuffix);
     }
 
     /**
@@ -74,10 +80,12 @@ public class BatchExportTask extends Task<ExportResult> {
     public static BatchExportTask forRaw(List<ProjectImageEntry<BufferedImage>> entries,
                                          RawExportConfig config,
                                          String workflowScript,
-                                         boolean exportGeoJson) {
+                                         boolean exportGeoJson,
+                                         String filenamePrefix,
+                                         String filenameSuffix) {
         return new BatchExportTask(entries, ExportCategory.RAW,
                 null, null, config, null, null, null, workflowScript,
-                exportGeoJson, config.getOutputDirectory());
+                exportGeoJson, config.getOutputDirectory(), filenamePrefix, filenameSuffix);
     }
 
     /**
@@ -86,10 +94,12 @@ public class BatchExportTask extends Task<ExportResult> {
     public static BatchExportTask forTiled(List<ProjectImageEntry<BufferedImage>> entries,
                                            TiledExportConfig config,
                                            String workflowScript,
-                                           boolean exportGeoJson) {
+                                           boolean exportGeoJson,
+                                           String filenamePrefix,
+                                           String filenameSuffix) {
         return new BatchExportTask(entries, ExportCategory.TILED,
                 null, null, null, config, null, null, workflowScript,
-                exportGeoJson, config.getOutputDirectory());
+                exportGeoJson, config.getOutputDirectory(), filenamePrefix, filenameSuffix);
     }
 
     private BatchExportTask(List<ProjectImageEntry<BufferedImage>> entries,
@@ -102,7 +112,9 @@ public class BatchExportTask extends Task<ExportResult> {
                             DensityMapBuilder densityBuilder,
                             String workflowScript,
                             boolean exportGeoJson,
-                            File outputDirectory) {
+                            File outputDirectory,
+                            String filenamePrefix,
+                            String filenameSuffix) {
         this.entries = List.copyOf(entries);
         this.category = category;
         this.renderedConfig = renderedConfig;
@@ -114,6 +126,8 @@ public class BatchExportTask extends Task<ExportResult> {
         this.workflowScript = workflowScript;
         this.exportGeoJson = exportGeoJson;
         this.outputDirectory = outputDirectory;
+        this.filenamePrefix = filenamePrefix != null ? filenamePrefix : "";
+        this.filenameSuffix = filenameSuffix != null ? filenameSuffix : "";
     }
 
     @Override
@@ -135,7 +149,8 @@ public class BatchExportTask extends Task<ExportResult> {
             }
 
             var entry = entries.get(i);
-            String entryName = entry.getImageName();
+            String rawName = entry.getImageName();
+            String entryName = filenamePrefix + rawName + filenameSuffix;
 
             updateMessage(String.format("Exporting %d of %d: %s", i + 1, total, entryName));
             updateProgress(i, total);

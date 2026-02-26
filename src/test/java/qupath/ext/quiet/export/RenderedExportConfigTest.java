@@ -333,4 +333,26 @@ class RenderedExportConfigTest {
         assertEquals(18, config.getColorScaleBarFontSize());
         assertFalse(config.isColorScaleBarBoldText());
     }
+
+    @Test
+    void testBuildOutputFilenameSvg() {
+        RenderedExportConfig config = new RenderedExportConfig.Builder()
+                .classifierName("test")
+                .format(OutputFormat.SVG)
+                .outputDirectory(tempDir)
+                .build();
+
+        assertEquals("my_image.svg", config.buildOutputFilename("my_image"));
+    }
+
+    @Test
+    void testSvgFormatAccepted() {
+        RenderedExportConfig config = new RenderedExportConfig.Builder()
+                .classifierName("test")
+                .format(OutputFormat.SVG)
+                .outputDirectory(tempDir)
+                .build();
+
+        assertEquals(OutputFormat.SVG, config.getFormat());
+    }
 }

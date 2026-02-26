@@ -26,6 +26,7 @@ import qupath.ext.quiet.export.BatchExportTask;
 import qupath.ext.quiet.export.ExportCategory;
 import qupath.ext.quiet.export.ExportResult;
 import qupath.ext.quiet.export.MaskExportConfig;
+import qupath.ext.quiet.export.OutputFormat;
 import qupath.ext.quiet.export.RawExportConfig;
 import qupath.ext.quiet.export.RenderedExportConfig;
 import qupath.ext.quiet.export.TiledExportConfig;
@@ -292,6 +293,10 @@ public class ExportWizard {
         renderedConfigPane.savePreferences();
         RenderedExportConfig config = renderedConfigPane.buildConfig(outputDir);
 
+        if (!checkExportSize(config.getDownsample(), config.getFormat())) {
+            return;
+        }
+
         PixelClassifier classifier = null;
         DensityMapBuilder densityBuilder = null;
 
@@ -336,9 +341,12 @@ public class ExportWizard {
         String workflowScript = addToWorkflow
                 ? ScriptGenerator.generate(ExportCategory.RENDERED, config) : null;
 
+        String prefix = imageSelectionPane.getFilenamePrefix();
+        String suffix = imageSelectionPane.getFilenameSuffix();
+
         currentTask = BatchExportTask.forRendered(
                 imageSelectionPane.getSelectedEntries(), config, classifier,
-                densityBuilder, workflowScript, exportGeoJson);
+                densityBuilder, workflowScript, exportGeoJson, prefix, suffix);
         lastExportDirectory = outputDir;
         runTask();
     }
@@ -347,11 +355,19 @@ public class ExportWizard {
         maskConfigPane.savePreferences();
         MaskExportConfig config = maskConfigPane.buildConfig(outputDir);
 
+        if (!checkExportSize(config.getDownsample(), config.getFormat())) {
+            return;
+        }
+
         String workflowScript = addToWorkflow
                 ? ScriptGenerator.generate(ExportCategory.MASK, config) : null;
 
+        String prefix = imageSelectionPane.getFilenamePrefix();
+        String suffix = imageSelectionPane.getFilenameSuffix();
+
         currentTask = BatchExportTask.forMask(
-                imageSelectionPane.getSelectedEntries(), config, workflowScript, exportGeoJson);
+                imageSelectionPane.getSelectedEntries(), config, workflowScript, exportGeoJson,
+                prefix, suffix);
         lastExportDirectory = outputDir;
         runTask();
     }
@@ -360,11 +376,19 @@ public class ExportWizard {
         rawConfigPane.savePreferences();
         RawExportConfig config = rawConfigPane.buildConfig(outputDir);
 
+        if (!checkExportSize(config.getDownsample(), config.getFormat())) {
+            return;
+        }
+
         String workflowScript = addToWorkflow
                 ? ScriptGenerator.generate(ExportCategory.RAW, config) : null;
 
+        String prefix = imageSelectionPane.getFilenamePrefix();
+        String suffix = imageSelectionPane.getFilenameSuffix();
+
         currentTask = BatchExportTask.forRaw(
-                imageSelectionPane.getSelectedEntries(), config, workflowScript, exportGeoJson);
+                imageSelectionPane.getSelectedEntries(), config, workflowScript, exportGeoJson,
+                prefix, suffix);
         lastExportDirectory = outputDir;
         runTask();
     }
@@ -376,10 +400,46 @@ public class ExportWizard {
         String workflowScript = addToWorkflow
                 ? ScriptGenerator.generate(ExportCategory.TILED, config) : null;
 
+        String prefix = imageSelectionPane.getFilenamePrefix();
+        String suffix = imageSelectionPane.getFilenameSuffix();
+
         currentTask = BatchExportTask.forTiled(
-                imageSelectionPane.getSelectedEntries(), config, workflowScript, exportGeoJson);
+                imageSelectionPane.getSelectedEntries(), config, workflowScript, exportGeoJson,
+                prefix, suffix);
         lastExportDirectory = outputDir;
         runTask();
+    }
+
+    /**
+     * Check if the estimated export size is very large and warn the user.
+     * Returns true if the export should proceed, false if the user cancelled.
+     */
+    private boolean checkExportSize(double downsample, OutputFormat format) {
+        if (format == OutputFormat.OME_TIFF_PYRAMID) return true;
+
+        var currentImageData = qupath.getImageData();
+        if (currentImageData == null) return true;
+
+        var server = currentImageData.getServer();
+        long outW = (long) Math.ceil(server.getWidth() / downsample);
+        long outH = (long) Math.ceil(server.getHeight() / downsample);
+        long totalPixels = outW * outH;
+
+        if (format == OutputFormat.SVG && totalPixels > 16_000_000L) {
+            return Dialogs.showConfirmDialog(
+                    resources.getString("warning.title"),
+                    String.format(resources.getString("warning.svgLargeExport"),
+                            outW, outH));
+        }
+
+        if (totalPixels > 100_000_000L) {
+            return Dialogs.showConfirmDialog(
+                    resources.getString("warning.title"),
+                    String.format(resources.getString("warning.largeExport"),
+                            outW, outH, format.toString()));
+        }
+
+        return true;
     }
 
     private void runTask() {
@@ -489,6 +549,8 @@ public class ExportWizard {
             maskConfigPane.savePreferences();
             rawConfigPane.savePreferences();
             tiledConfigPane.savePreferences();
+            QuietPreferences.setFilenamePrefix(imageSelectionPane.getFilenamePrefix());
+            QuietPreferences.setFilenameSuffix(imageSelectionPane.getFilenameSuffix());
         } catch (Exception e) {
             logger.warn("Failed to save some preferences on wizard close: {}", e.getMessage());
         }

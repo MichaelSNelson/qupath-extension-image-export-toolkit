@@ -9,7 +9,8 @@ public enum OutputFormat {
     TIFF("tif"),
     JPEG("jpg"),
     OME_TIFF("ome.tif"),
-    OME_TIFF_PYRAMID("ome.tif");
+    OME_TIFF_PYRAMID("ome.tif"),
+    SVG("svg");
 
     private final String extension;
 

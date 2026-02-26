@@ -33,6 +33,12 @@ public class QuietPreferences {
     private static final DoubleProperty wizardHeight =
             PathPrefs.createPersistentPreference(PREFIX + "wizardHeight", 700.0);
 
+    private static final StringProperty filenamePrefix =
+            PathPrefs.createPersistentPreference(PREFIX + "filenamePrefix", "");
+
+    private static final StringProperty filenameSuffix =
+            PathPrefs.createPersistentPreference(PREFIX + "filenameSuffix", "");
+
     // --- Rendered export preferences ---
 
     private static final StringProperty renderedMode =
@@ -234,6 +240,14 @@ public class QuietPreferences {
     public static DoubleProperty wizardHeightProperty() { return wizardHeight; }
     public static double getWizardHeight() { return wizardHeight.get(); }
     public static void setWizardHeight(double value) { wizardHeight.set(value); }
+
+    public static StringProperty filenamePrefixProperty() { return filenamePrefix; }
+    public static String getFilenamePrefix() { return filenamePrefix.get(); }
+    public static void setFilenamePrefix(String value) { filenamePrefix.set(value != null ? value : ""); }
+
+    public static StringProperty filenameSuffixProperty() { return filenameSuffix; }
+    public static String getFilenameSuffix() { return filenameSuffix.get(); }
+    public static void setFilenameSuffix(String value) { filenameSuffix.set(value != null ? value : ""); }
 
     // ==================== Rendered ====================
 

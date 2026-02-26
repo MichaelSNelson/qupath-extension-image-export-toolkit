@@ -8,6 +8,7 @@ import java.util.ResourceBundle;
 
 import javafx.collections.FXCollections;
 import javafx.collections.ObservableList;
+import javafx.collections.transformation.FilteredList;
 import javafx.geometry.Insets;
 import javafx.geometry.Pos;
 import javafx.scene.control.Button;
@@ -23,6 +24,7 @@ import javafx.scene.input.ClipboardContent;
 import javafx.scene.layout.HBox;
 import javafx.scene.layout.Priority;
 import javafx.scene.layout.VBox;
+import javafx.scene.paint.Color;
 import javafx.scene.text.Font;
 import javafx.scene.text.FontWeight;
 import javafx.stage.DirectoryChooser;
@@ -50,7 +52,13 @@ public class ImageSelectionPane extends VBox {
     private ExportCategory currentCategory;
     private TextField outputDirField;
     private ListView<ImageEntryItem> imageListView;
+    private ObservableList<ImageEntryItem> masterItems;
+    private FilteredList<ImageEntryItem> filteredItems;
+    private TextField filterField;
     private Label imageCountLabel;
+    private TextField prefixField;
+    private TextField suffixField;
+    private Label filenamePreviewLabel;
     private CheckBox addToWorkflowCheck;
     private CheckBox exportGeoJsonCheck;
     private ProgressBar progressBar;
@@ -87,20 +95,73 @@ public class ImageSelectionPane extends VBox {
         var dirBox = new HBox(5, outputDirField, browseButton, defaultButton);
         HBox.setHgrow(outputDirField, Priority.ALWAYS);
 
-        // Image list
+        // Filename prefix/suffix
+        var prefixLabel = new Label(resources.getString("step3.label.filenamePrefix"));
+        prefixLabel.setTooltip(createTooltip("tooltip.step3.filenamePrefix"));
+        prefixField = new TextField(QuietPreferences.getFilenamePrefix());
+        prefixField.setPromptText("e.g. batch1_");
+        prefixField.setTooltip(createTooltip("tooltip.step3.filenamePrefix"));
+        HBox.setHgrow(prefixField, Priority.ALWAYS);
+
+        var suffixLabel = new Label(resources.getString("step3.label.filenameSuffix"));
+        suffixLabel.setTooltip(createTooltip("tooltip.step3.filenameSuffix"));
+        suffixField = new TextField(QuietPreferences.getFilenameSuffix());
+        suffixField.setPromptText("e.g. _masks");
+        suffixField.setTooltip(createTooltip("tooltip.step3.filenameSuffix"));
+        HBox.setHgrow(suffixField, Priority.ALWAYS);
+
+        var prefixBox = new HBox(5, prefixLabel, prefixField);
+        HBox.setHgrow(prefixField, Priority.ALWAYS);
+        prefixBox.setAlignment(Pos.CENTER_LEFT);
+
+        var suffixBox = new HBox(5, suffixLabel, suffixField);
+        HBox.setHgrow(suffixField, Priority.ALWAYS);
+        suffixBox.setAlignment(Pos.CENTER_LEFT);
+
+        var prefixSuffixRow = new HBox(15, prefixBox, suffixBox);
+        HBox.setHgrow(prefixBox, Priority.ALWAYS);
+        HBox.setHgrow(suffixBox, Priority.ALWAYS);
+
+        // Filename preview
+        var previewTitleLabel = new Label(resources.getString("step3.label.filenamePreview"));
+        filenamePreviewLabel = new Label();
+        filenamePreviewLabel.setTextFill(Color.GRAY);
+        filenamePreviewLabel.setFont(Font.font("monospace", 11));
+        var previewRow = new HBox(5, previewTitleLabel, filenamePreviewLabel);
+        previewRow.setAlignment(Pos.CENTER_LEFT);
+
+        // Update preview when prefix/suffix change
+        prefixField.textProperty().addListener((obs, o, n) -> updateFilenamePreview());
+        suffixField.textProperty().addListener((obs, o, n) -> updateFilenamePreview());
+
+        // Image list header with selection buttons
         var imagesLabel = new Label(resources.getString("step3.label.imagesToExport"));
 
         var selectAllButton = new Button(resources.getString("button.selectAll"));
         selectAllButton.setOnAction(e -> setAllImagesSelected(true));
         var deselectAllButton = new Button(resources.getString("button.deselectAll"));
         deselectAllButton.setOnAction(e -> setAllImagesSelected(false));
+
+        var selectVisibleButton = new Button(resources.getString("button.selectVisible"));
+        selectVisibleButton.setOnAction(e -> setVisibleImagesSelected(true));
+        selectVisibleButton.setTooltip(createTooltip("tooltip.step3.selectVisible"));
+        var deselectVisibleButton = new Button(resources.getString("button.deselectVisible"));
+        deselectVisibleButton.setOnAction(e -> setVisibleImagesSelected(false));
+        deselectVisibleButton.setTooltip(createTooltip("tooltip.step3.deselectVisible"));
+
         imageCountLabel = new Label();
 
-        var selectionButtons = new HBox(5, selectAllButton, deselectAllButton, imageCountLabel);
+        var selectionButtons = new HBox(5, selectAllButton, deselectAllButton,
+                selectVisibleButton, deselectVisibleButton, imageCountLabel);
         selectionButtons.setAlignment(Pos.CENTER_LEFT);
 
         var imagesHeader = new HBox(10, imagesLabel, selectionButtons);
         imagesHeader.setAlignment(Pos.CENTER_LEFT);
+
+        // Filter field
+        filterField = new TextField();
+        filterField.setPromptText(resources.getString("step3.filter.prompt"));
+        filterField.setTooltip(createTooltip("tooltip.step3.filter"));
 
         imageListView = new ListView<>();
         imageListView.setPrefHeight(200);
@@ -142,7 +203,10 @@ public class ImageSelectionPane extends VBox {
         getChildren().addAll(
                 header,
                 dirLabel, dirBox,
+                prefixSuffixRow,
+                previewRow,
                 imagesHeader,
+                filterField,
                 imageListView,
                 scriptBox,
                 addToWorkflowCheck,
@@ -156,27 +220,80 @@ public class ImageSelectionPane extends VBox {
         var project = qupath.getProject();
         if (project == null) return;
 
-        ObservableList<ImageEntryItem> items = FXCollections.observableArrayList();
+        masterItems = FXCollections.observableArrayList();
         for (var entry : project.getImageList()) {
-            items.add(new ImageEntryItem(entry, true));
+            masterItems.add(new ImageEntryItem(entry, true));
         }
-        imageListView.setItems(items);
-        updateImageCount();
 
-        // Track selection changes for count label
-        for (var item : items) {
-            item.selectedProperty().addListener((obs, oldVal, newVal) -> updateImageCount());
+        filteredItems = new FilteredList<>(masterItems, item -> true);
+        imageListView.setItems(filteredItems);
+        updateImageCount();
+        updateFilenamePreview();
+
+        // Track selection changes for count label and preview
+        for (var item : masterItems) {
+            item.selectedProperty().addListener((obs, oldVal, newVal) -> {
+                updateImageCount();
+                updateFilenamePreview();
+            });
         }
+
+        // Wire filter field to FilteredList predicate
+        filterField.textProperty().addListener((obs, oldVal, newVal) -> {
+            String filterText = (newVal != null) ? newVal.toLowerCase() : "";
+            if (filterText.isEmpty()) {
+                filteredItems.setPredicate(item -> true);
+            } else {
+                filteredItems.setPredicate(item ->
+                        item.toString().toLowerCase().contains(filterText));
+            }
+            updateImageCount();
+        });
     }
 
     private void updateImageCount() {
-        long count = imageListView.getItems().stream()
+        long selectedCount = masterItems.stream()
                 .filter(ImageEntryItem::isSelected).count();
-        imageCountLabel.setText(String.format(resources.getString("step3.label.imageCount"), (int) count));
+        String filterText = filterField.getText();
+        if (filterText != null && !filterText.isEmpty()) {
+            int visibleCount = filteredItems.size();
+            int totalCount = masterItems.size();
+            imageCountLabel.setText(String.format(
+                    resources.getString("step3.label.imageCountFiltered"),
+                    (int) selectedCount, visibleCount, totalCount));
+        } else {
+            imageCountLabel.setText(String.format(
+                    resources.getString("step3.label.imageCount"), (int) selectedCount));
+        }
+    }
+
+    private void updateFilenamePreview() {
+        String prefix = getFilenamePrefix();
+        String suffix = getFilenameSuffix();
+
+        // Find first selected image name, or use placeholder
+        String imageName = "image_name";
+        if (masterItems != null) {
+            for (var item : masterItems) {
+                if (item.isSelected()) {
+                    imageName = item.toString();
+                    break;
+                }
+            }
+        }
+
+        filenamePreviewLabel.setText(prefix + imageName + suffix + ".png");
     }
 
     private void setAllImagesSelected(boolean selected) {
-        for (var item : imageListView.getItems()) {
+        for (var item : masterItems) {
+            item.setSelected(selected);
+        }
+        updateImageCount();
+    }
+
+    private void setVisibleImagesSelected(boolean selected) {
+        for (var item : filteredItems) {
             item.setSelected(selected);
         }
         updateImageCount();
@@ -241,12 +358,22 @@ public class ImageSelectionPane extends VBox {
 
     public List<ProjectImageEntry<BufferedImage>> getSelectedEntries() {
         List<ProjectImageEntry<BufferedImage>> selected = new ArrayList<>();
-        for (var item : imageListView.getItems()) {
+        for (var item : masterItems) {
             if (item.isSelected()) {
                 selected.add(item.getEntry());
             }
         }
         return selected;
+    }
+
+    public String getFilenamePrefix() {
+        String text = prefixField.getText();
+        return (text != null) ? text : "";
+    }
+
+    public String getFilenameSuffix() {
+        String text = suffixField.getText();
+        return (text != null) ? text : "";
     }
 
     public boolean isAddToWorkflow() {

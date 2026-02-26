@@ -182,7 +182,10 @@ public class MaskConfigPane extends VBox {
 
         // Format
         grid.add(new Label(resources.getString("mask.label.format")), 0, row);
-        formatCombo = new ComboBox<>(FXCollections.observableArrayList(OutputFormat.values()));
+        formatCombo = new ComboBox<>(FXCollections.observableArrayList(
+                java.util.Arrays.stream(OutputFormat.values())
+                        .filter(f -> f != OutputFormat.SVG)
+                        .toList()));
         formatCombo.setValue(OutputFormat.PNG);
         grid.add(formatCombo, 1, row);
         row++;
