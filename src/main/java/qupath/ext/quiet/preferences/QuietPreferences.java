@@ -215,6 +215,26 @@ public class QuietPreferences {
     private static final StringProperty tiledLabelFormat =
             PathPrefs.createPersistentPreference(PREFIX + "tiled.labelFormat", "PNG");
 
+    // --- Object Crops export preferences ---
+
+    private static final StringProperty objectCropType =
+            PathPrefs.createPersistentPreference(PREFIX + "objectCrops.objectType", "DETECTIONS");
+
+    private static final IntegerProperty objectCropSize =
+            PathPrefs.createPersistentPreference(PREFIX + "objectCrops.cropSize", 64);
+
+    private static final IntegerProperty objectCropPadding =
+            PathPrefs.createPersistentPreference(PREFIX + "objectCrops.padding", 0);
+
+    private static final DoubleProperty objectCropDownsample =
+            PathPrefs.createPersistentPreference(PREFIX + "objectCrops.downsample", 1.0);
+
+    private static final StringProperty objectCropLabelFormat =
+            PathPrefs.createPersistentPreference(PREFIX + "objectCrops.labelFormat", "SUBDIRECTORY");
+
+    private static final StringProperty objectCropFormat =
+            PathPrefs.createPersistentPreference(PREFIX + "objectCrops.format", "PNG");
+
     private QuietPreferences() {
         // Utility class
     }
@@ -478,4 +498,30 @@ public class QuietPreferences {
     public static StringProperty tiledLabelFormatProperty() { return tiledLabelFormat; }
     public static String getTiledLabelFormat() { return tiledLabelFormat.get(); }
     public static void setTiledLabelFormat(String value) { tiledLabelFormat.set(value != null ? value : "PNG"); }
+
+    // ==================== Object Crops ====================
+
+    public static StringProperty objectCropTypeProperty() { return objectCropType; }
+    public static String getObjectCropType() { return objectCropType.get(); }
+    public static void setObjectCropType(String value) { objectCropType.set(value != null ? value : "DETECTIONS"); }
+
+    public static IntegerProperty objectCropSizeProperty() { return objectCropSize; }
+    public static int getObjectCropSize() { return objectCropSize.get(); }
+    public static void setObjectCropSize(int value) { objectCropSize.set(value); }
+
+    public static IntegerProperty objectCropPaddingProperty() { return objectCropPadding; }
+    public static int getObjectCropPadding() { return objectCropPadding.get(); }
+    public static void setObjectCropPadding(int value) { objectCropPadding.set(value); }
+
+    public static DoubleProperty objectCropDownsampleProperty() { return objectCropDownsample; }
+    public static double getObjectCropDownsample() { return objectCropDownsample.get(); }
+    public static void setObjectCropDownsample(double value) { objectCropDownsample.set(value); }
+
+    public static StringProperty objectCropLabelFormatProperty() { return objectCropLabelFormat; }
+    public static String getObjectCropLabelFormat() { return objectCropLabelFormat.get(); }
+    public static void setObjectCropLabelFormat(String value) { objectCropLabelFormat.set(value != null ? value : "SUBDIRECTORY"); }
+
+    public static StringProperty objectCropFormatProperty() { return objectCropFormat; }
+    public static String getObjectCropFormat() { return objectCropFormat.get(); }
+    public static void setObjectCropFormat(String value) { objectCropFormat.set(value != null ? value : "PNG"); }
 }

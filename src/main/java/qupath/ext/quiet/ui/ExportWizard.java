@@ -1,7 +1,12 @@
 package qupath.ext.quiet.ui;
 
 import java.awt.Desktop;
+import java.awt.image.BufferedImage;
 import java.io.File;
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
 import java.util.ResourceBundle;
 
 import org.slf4j.Logger;
@@ -12,7 +17,10 @@ import javafx.geometry.Insets;
 import javafx.geometry.Pos;
 import javafx.scene.Node;
 import javafx.scene.Scene;
+import javafx.scene.control.Alert;
 import javafx.scene.control.Button;
+import javafx.scene.control.ButtonBar;
+import javafx.scene.control.ButtonType;
 import javafx.scene.control.ScrollPane;
 import javafx.scene.control.Separator;
 import javafx.scene.layout.BorderPane;
@@ -26,6 +34,7 @@ import qupath.ext.quiet.export.BatchExportTask;
 import qupath.ext.quiet.export.ExportCategory;
 import qupath.ext.quiet.export.ExportResult;
 import qupath.ext.quiet.export.MaskExportConfig;
+import qupath.ext.quiet.export.ObjectCropConfig;
 import qupath.ext.quiet.export.OutputFormat;
 import qupath.ext.quiet.export.RawExportConfig;
 import qupath.ext.quiet.export.RenderedExportConfig;
@@ -37,6 +46,7 @@ import qupath.lib.analysis.heatmaps.DensityMaps;
 import qupath.lib.analysis.heatmaps.DensityMaps.DensityMapBuilder;
 import qupath.lib.classifiers.pixel.PixelClassifier;
 import qupath.lib.gui.QuPathGUI;
+import qupath.lib.projects.ProjectImageEntry;
 
 /**
  * Three-step wizard for configuring and running image exports.
@@ -62,6 +72,7 @@ public class ExportWizard {
     private MaskConfigPane maskConfigPane;
     private RawConfigPane rawConfigPane;
     private TiledConfigPane tiledConfigPane;
+    private ObjectCropConfigPane objectCropConfigPane;
     private ImageSelectionPane imageSelectionPane;
 
     // Navigation buttons
@@ -170,6 +181,7 @@ public class ExportWizard {
         maskConfigPane = new MaskConfigPane(qupath);
         rawConfigPane = new RawConfigPane();
         tiledConfigPane = new TiledConfigPane(qupath);
+        objectCropConfigPane = new ObjectCropConfigPane(qupath);
         imageSelectionPane = new ImageSelectionPane(qupath, stage);
 
         // Wire up script handlers
@@ -190,6 +202,7 @@ public class ExportWizard {
                     case MASK -> maskConfigPane;
                     case RAW -> rawConfigPane;
                     case TILED -> tiledConfigPane;
+                    case OBJECT_CROPS -> objectCropConfigPane;
                 };
                 // Wrap in ScrollPane so navigation buttons remain visible
                 // when the config pane content is taller than the window
@@ -271,12 +284,47 @@ public class ExportWizard {
         QuietPreferences.setExportGeoJson(exportGeoJson);
         QuietPreferences.setLastCategory(selectedCategory.name());
 
+        // Channel consistency validation
+        var channelScan = scanChannelConsistency(selectedEntries);
+        if (!channelScan.consistent) {
+            if (selectedCategory == ExportCategory.RAW) {
+                // Blocking error for Raw export -- channels must be consistent
+                Dialogs.showErrorMessage(
+                        resources.getString("channel.warning.title"),
+                        resources.getString("channel.error.raw.content"));
+                return;
+            }
+            // Warning dialog for other categories
+            String groupSummary = channelScan.buildGroupSummary();
+            String message = String.format(
+                    resources.getString("channel.warning.content"), groupSummary);
+
+            var continueBtn = new ButtonType(
+                    resources.getString("button.continueAnyway"),
+                    ButtonBar.ButtonData.OK_DONE);
+            var cancelBtn = new ButtonType(
+                    resources.getString("button.cancel"),
+                    ButtonBar.ButtonData.CANCEL_CLOSE);
+            var alert = new Alert(Alert.AlertType.WARNING, message, continueBtn, cancelBtn);
+            alert.setTitle(resources.getString("channel.warning.title"));
+            alert.setHeaderText(resources.getString("channel.warning.header"));
+            alert.initOwner(stage);
+            var result = alert.showAndWait();
+            if (result.isEmpty() || result.get() == cancelBtn) {
+                return;
+            }
+        }
+
         try {
             switch (selectedCategory) {
-                case RENDERED -> startRenderedExport(outputDir, addToWorkflow, exportGeoJson);
+                case RENDERED -> startRenderedExport(outputDir, addToWorkflow,
+                        exportGeoJson, channelScan.consistent);
                 case MASK -> startMaskExport(outputDir, addToWorkflow, exportGeoJson);
-                case RAW -> startRawExport(outputDir, addToWorkflow, exportGeoJson);
+                case RAW -> startRawExport(outputDir, addToWorkflow, exportGeoJson,
+                        channelScan.consistent);
                 case TILED -> startTiledExport(outputDir, addToWorkflow, exportGeoJson);
+                case OBJECT_CROPS -> startObjectCropsExport(outputDir, addToWorkflow,
+                        exportGeoJson, channelScan.consistent);
             }
         } catch (IllegalArgumentException e) {
             Dialogs.showWarningNotification(
@@ -289,7 +337,8 @@ public class ExportWizard {
         }
     }
 
-    private void startRenderedExport(File outputDir, boolean addToWorkflow, boolean exportGeoJson) {
+    private void startRenderedExport(File outputDir, boolean addToWorkflow,
+                                      boolean exportGeoJson, boolean channelsConsistent) {
         renderedConfigPane.savePreferences();
         RenderedExportConfig config = renderedConfigPane.buildConfig(outputDir);
 
@@ -346,7 +395,8 @@ public class ExportWizard {
 
         currentTask = BatchExportTask.forRendered(
                 imageSelectionPane.getSelectedEntries(), config, classifier,
-                densityBuilder, workflowScript, exportGeoJson, prefix, suffix);
+                densityBuilder, workflowScript, exportGeoJson, prefix, suffix,
+                channelsConsistent);
         lastExportDirectory = outputDir;
         runTask();
     }
@@ -372,7 +422,8 @@ public class ExportWizard {
         runTask();
     }
 
-    private void startRawExport(File outputDir, boolean addToWorkflow, boolean exportGeoJson) {
+    private void startRawExport(File outputDir, boolean addToWorkflow,
+                                boolean exportGeoJson, boolean channelsConsistent) {
         rawConfigPane.savePreferences();
         RawExportConfig config = rawConfigPane.buildConfig(outputDir);
 
@@ -388,7 +439,7 @@ public class ExportWizard {
 
         currentTask = BatchExportTask.forRaw(
                 imageSelectionPane.getSelectedEntries(), config, workflowScript, exportGeoJson,
-                prefix, suffix);
+                prefix, suffix, channelsConsistent);
         lastExportDirectory = outputDir;
         runTask();
     }
@@ -408,6 +459,77 @@ public class ExportWizard {
                 prefix, suffix);
         lastExportDirectory = outputDir;
         runTask();
+    }
+
+    private void startObjectCropsExport(File outputDir, boolean addToWorkflow,
+                                        boolean exportGeoJson, boolean channelsConsistent) {
+        objectCropConfigPane.savePreferences();
+        ObjectCropConfig config = objectCropConfigPane.buildConfig(outputDir);
+
+        String workflowScript = addToWorkflow
+                ? ScriptGenerator.generate(ExportCategory.OBJECT_CROPS, config) : null;
+
+        String prefix = imageSelectionPane.getFilenamePrefix();
+        String suffix = imageSelectionPane.getFilenameSuffix();
+
+        currentTask = BatchExportTask.forObjectCrops(
+                imageSelectionPane.getSelectedEntries(), config, workflowScript, exportGeoJson,
+                prefix, suffix, channelsConsistent);
+        lastExportDirectory = outputDir;
+        runTask();
+    }
+
+    /**
+     * Scan selected images for channel consistency before export.
+     * Opens each image briefly to read channel metadata (no pixel reading).
+     */
+    private ChannelScanResult scanChannelConsistency(
+            List<ProjectImageEntry<BufferedImage>> entries) {
+        Map<String, List<String>> signatureToImages = new LinkedHashMap<>();
+        for (var entry : entries) {
+            try {
+                var imageData = entry.readImageData();
+                String sig = BatchExportTask.channelSignature(imageData.getServer());
+                signatureToImages.computeIfAbsent(sig, k -> new ArrayList<>())
+                        .add(entry.getImageName());
+                imageData.getServer().close();
+            } catch (Exception e) {
+                logger.warn("Failed to read channel info for {}: {}",
+                        entry.getImageName(), e.getMessage());
+            }
+        }
+        boolean consistent = signatureToImages.size() <= 1;
+        return new ChannelScanResult(consistent, signatureToImages);
+    }
+
+    /**
+     * Result of scanning images for channel consistency.
+     */
+    private static class ChannelScanResult {
+        final boolean consistent;
+        final Map<String, List<String>> signatureToImages;
+
+        ChannelScanResult(boolean consistent, Map<String, List<String>> signatureToImages) {
+            this.consistent = consistent;
+            this.signatureToImages = signatureToImages;
+        }
+
+        String buildGroupSummary() {
+            var sb = new StringBuilder();
+            int groupNum = 1;
+            for (var entry : signatureToImages.entrySet()) {
+                sb.append("Group ").append(groupNum++).append(": ");
+                var images = entry.getValue();
+                if (images.size() <= 3) {
+                    sb.append(String.join(", ", images));
+                } else {
+                    sb.append(images.get(0)).append(", ").append(images.get(1))
+                      .append(" ... and ").append(images.size() - 2).append(" more");
+                }
+                sb.append("\n");
+            }
+            return sb.toString();
+        }
     }
 
     /**
@@ -549,6 +671,7 @@ public class ExportWizard {
             maskConfigPane.savePreferences();
             rawConfigPane.savePreferences();
             tiledConfigPane.savePreferences();
+            objectCropConfigPane.savePreferences();
             QuietPreferences.setFilenamePrefix(imageSelectionPane.getFilenamePrefix());
             QuietPreferences.setFilenameSuffix(imageSelectionPane.getFilenameSuffix());
         } catch (Exception e) {
@@ -588,6 +711,7 @@ public class ExportWizard {
                 case MASK -> maskConfigPane.buildConfig(outputDir);
                 case RAW -> rawConfigPane.buildConfig(outputDir);
                 case TILED -> tiledConfigPane.buildConfig(outputDir);
+                case OBJECT_CROPS -> objectCropConfigPane.buildConfig(outputDir);
             };
 
             return ScriptGenerator.generate(category, config);

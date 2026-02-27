@@ -14,6 +14,7 @@ import javafx.scene.control.Label;
 import javafx.scene.control.ListView;
 import javafx.scene.control.Spinner;
 import javafx.scene.control.SpinnerValueFactory;
+import javafx.scene.control.TitledPane;
 import javafx.scene.control.Tooltip;
 import javafx.scene.control.cell.CheckBoxListCell;
 import javafx.scene.layout.GridPane;
@@ -57,6 +58,7 @@ public class MaskConfigPane extends VBox {
     // Controls needing visibility toggling
     private Label classificationsLabel;
     private VBox classificationsBox;
+    private TitledPane classificationsSection;
     private Label grayscaleLutLabel;
     private Label boundaryThicknessLabel;
 
@@ -73,14 +75,15 @@ public class MaskConfigPane extends VBox {
         var header = new Label(resources.getString("wizard.step2.title") + " - Label / Mask");
         header.setFont(Font.font(null, FontWeight.BOLD, 14));
 
-        var grid = new GridPane();
-        grid.setHgap(10);
-        grid.setVgap(10);
+        // --- Section 1: Mask Settings ---
+        var settingsGrid = new GridPane();
+        settingsGrid.setHgap(10);
+        settingsGrid.setVgap(10);
 
         int row = 0;
 
         // Mask type
-        grid.add(new Label(resources.getString("mask.label.type")), 0, row);
+        settingsGrid.add(new Label(resources.getString("mask.label.type")), 0, row);
         maskTypeCombo = new ComboBox<>(FXCollections.observableArrayList(
                 MaskExportConfig.MaskType.values()));
         maskTypeCombo.setValue(MaskExportConfig.MaskType.BINARY);
@@ -101,11 +104,11 @@ public class MaskConfigPane extends VBox {
                 return MaskExportConfig.MaskType.BINARY;
             }
         });
-        grid.add(maskTypeCombo, 1, row);
+        settingsGrid.add(maskTypeCombo, 1, row);
         row++;
 
         // Object source
-        grid.add(new Label(resources.getString("mask.label.objectSource")), 0, row);
+        settingsGrid.add(new Label(resources.getString("mask.label.objectSource")), 0, row);
         objectSourceCombo = new ComboBox<>(FXCollections.observableArrayList(
                 MaskExportConfig.ObjectSource.values()));
         objectSourceCombo.setValue(MaskExportConfig.ObjectSource.ANNOTATIONS);
@@ -124,42 +127,11 @@ public class MaskConfigPane extends VBox {
                 return MaskExportConfig.ObjectSource.ANNOTATIONS;
             }
         });
-        grid.add(objectSourceCombo, 1, row);
-        row++;
-
-        // Background label
-        grid.add(new Label(resources.getString("mask.label.backgroundLabel")), 0, row);
-        backgroundLabelSpinner = new Spinner<>(new SpinnerValueFactory.IntegerSpinnerValueFactory(
-                -1, 255, 0));
-        backgroundLabelSpinner.setEditable(true);
-        backgroundLabelSpinner.setPrefWidth(100);
-        grid.add(backgroundLabelSpinner, 1, row);
-        row++;
-
-        // Boundary label
-        enableBoundaryCheck = new CheckBox(resources.getString("mask.label.enableBoundary"));
-        grid.add(enableBoundaryCheck, 0, row);
-        boundaryLabelSpinner = new Spinner<>(new SpinnerValueFactory.IntegerSpinnerValueFactory(
-                -1, 255, -1));
-        boundaryLabelSpinner.setEditable(true);
-        boundaryLabelSpinner.setPrefWidth(100);
-        boundaryLabelSpinner.disableProperty().bind(enableBoundaryCheck.selectedProperty().not());
-        grid.add(boundaryLabelSpinner, 1, row);
-        row++;
-
-        // Boundary thickness
-        boundaryThicknessLabel = new Label(resources.getString("mask.label.boundaryThickness"));
-        grid.add(boundaryThicknessLabel, 0, row);
-        boundaryThicknessSpinner = new Spinner<>(new SpinnerValueFactory.IntegerSpinnerValueFactory(
-                1, 20, 1));
-        boundaryThicknessSpinner.setEditable(true);
-        boundaryThicknessSpinner.setPrefWidth(100);
-        boundaryThicknessSpinner.disableProperty().bind(enableBoundaryCheck.selectedProperty().not());
-        grid.add(boundaryThicknessSpinner, 1, row);
+        settingsGrid.add(objectSourceCombo, 1, row);
         row++;
 
         // Downsample
-        grid.add(new Label(resources.getString("mask.label.downsample")), 0, row);
+        settingsGrid.add(new Label(resources.getString("mask.label.downsample")), 0, row);
         downsampleCombo = new ComboBox<>(FXCollections.observableArrayList(
                 1.0, 2.0, 4.0, 8.0, 16.0, 32.0));
         downsampleCombo.setEditable(true);
@@ -177,31 +149,73 @@ public class MaskConfigPane extends VBox {
                 catch (NumberFormatException e) { return 4.0; }
             }
         });
-        grid.add(downsampleCombo, 1, row);
+        settingsGrid.add(downsampleCombo, 1, row);
         row++;
 
         // Format
-        grid.add(new Label(resources.getString("mask.label.format")), 0, row);
+        settingsGrid.add(new Label(resources.getString("mask.label.format")), 0, row);
         formatCombo = new ComboBox<>(FXCollections.observableArrayList(
                 java.util.Arrays.stream(OutputFormat.values())
                         .filter(f -> f != OutputFormat.SVG)
                         .toList()));
         formatCombo.setValue(OutputFormat.PNG);
-        grid.add(formatCombo, 1, row);
-        row++;
+        settingsGrid.add(formatCombo, 1, row);
+
+        var maskSettingsSection = SectionBuilder.createSection(
+                resources.getString("mask.section.maskSettings"), true, settingsGrid);
+
+        // --- Section 2: Label Options ---
+        var labelGrid = new GridPane();
+        labelGrid.setHgap(10);
+        labelGrid.setVgap(10);
+
+        int lRow = 0;
+
+        // Background label
+        labelGrid.add(new Label(resources.getString("mask.label.backgroundLabel")), 0, lRow);
+        backgroundLabelSpinner = new Spinner<>(new SpinnerValueFactory.IntegerSpinnerValueFactory(
+                -1, 255, 0));
+        backgroundLabelSpinner.setEditable(true);
+        backgroundLabelSpinner.setPrefWidth(100);
+        labelGrid.add(backgroundLabelSpinner, 1, lRow);
+        lRow++;
+
+        // Boundary label
+        enableBoundaryCheck = new CheckBox(resources.getString("mask.label.enableBoundary"));
+        labelGrid.add(enableBoundaryCheck, 0, lRow);
+        boundaryLabelSpinner = new Spinner<>(new SpinnerValueFactory.IntegerSpinnerValueFactory(
+                -1, 255, -1));
+        boundaryLabelSpinner.setEditable(true);
+        boundaryLabelSpinner.setPrefWidth(100);
+        boundaryLabelSpinner.disableProperty().bind(enableBoundaryCheck.selectedProperty().not());
+        labelGrid.add(boundaryLabelSpinner, 1, lRow);
+        lRow++;
+
+        // Boundary thickness
+        boundaryThicknessLabel = new Label(resources.getString("mask.label.boundaryThickness"));
+        labelGrid.add(boundaryThicknessLabel, 0, lRow);
+        boundaryThicknessSpinner = new Spinner<>(new SpinnerValueFactory.IntegerSpinnerValueFactory(
+                1, 20, 1));
+        boundaryThicknessSpinner.setEditable(true);
+        boundaryThicknessSpinner.setPrefWidth(100);
+        boundaryThicknessSpinner.disableProperty().bind(enableBoundaryCheck.selectedProperty().not());
+        labelGrid.add(boundaryThicknessSpinner, 1, lRow);
+        lRow++;
 
         // Grayscale LUT
         grayscaleLutLabel = new Label();
         grayscaleLutCheck = new CheckBox(resources.getString("mask.label.grayscaleLut"));
-        grid.add(grayscaleLutCheck, 1, row);
-        row++;
+        labelGrid.add(grayscaleLutCheck, 1, lRow);
+        lRow++;
 
         // Shuffle instance labels
         shuffleInstanceLabelsCheck = new CheckBox(resources.getString("mask.label.shuffleInstance"));
-        grid.add(shuffleInstanceLabelsCheck, 1, row);
-        row++;
+        labelGrid.add(shuffleInstanceLabelsCheck, 1, lRow);
 
-        // Classifications list
+        var labelOptionsSection = SectionBuilder.createSection(
+                resources.getString("mask.section.labelOptions"), true, labelGrid);
+
+        // --- Section 3: Classifications ---
         classificationsLabel = new Label(resources.getString("mask.label.classifications"));
         classificationList = new ListView<>();
         classificationList.setPrefHeight(150);
@@ -217,19 +231,22 @@ public class MaskConfigPane extends VBox {
         classificationsBox = new VBox(5, classificationsLabel, classificationList, selectionBtns);
         VBox.setVgrow(classificationList, Priority.ALWAYS);
 
+        classificationsSection = SectionBuilder.createSection(
+                resources.getString("mask.section.classifications"), true, classificationsBox);
+
         // Dynamic visibility based on mask type
         maskTypeCombo.valueProperty().addListener((obs, old, newType) -> updateMaskTypeVisibility(newType));
         updateMaskTypeVisibility(MaskExportConfig.MaskType.BINARY);
 
-        getChildren().addAll(header, grid, classificationsBox);
-        VBox.setVgrow(classificationsBox, Priority.ALWAYS);
+        getChildren().addAll(header, maskSettingsSection, labelOptionsSection, classificationsSection);
+        VBox.setVgrow(classificationsSection, Priority.ALWAYS);
         wireTooltips();
     }
 
     private void updateMaskTypeVisibility(MaskExportConfig.MaskType type) {
         boolean needsClassifications = (type != MaskExportConfig.MaskType.INSTANCE);
-        classificationsBox.setVisible(needsClassifications);
-        classificationsBox.setManaged(needsClassifications);
+        classificationsSection.setVisible(needsClassifications);
+        classificationsSection.setManaged(needsClassifications);
 
         boolean showGrayscale = (type == MaskExportConfig.MaskType.GRAYSCALE_LABELS);
         grayscaleLutCheck.setVisible(showGrayscale);

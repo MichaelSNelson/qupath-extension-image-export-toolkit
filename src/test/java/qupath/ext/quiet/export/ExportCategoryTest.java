@@ -95,5 +95,6 @@ class ExportCategoryTest {
         assertEquals("Label / Mask", ExportCategory.MASK.toString());
         assertEquals("Raw Image Data", ExportCategory.RAW.toString());
         assertEquals("Tiled Export (ML)", ExportCategory.TILED.toString());
+        assertEquals("Object Crops (Classification)", ExportCategory.OBJECT_CROPS.toString());
     }
 }

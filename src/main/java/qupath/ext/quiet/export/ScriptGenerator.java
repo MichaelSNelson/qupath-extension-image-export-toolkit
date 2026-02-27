@@ -52,6 +52,12 @@ public class ScriptGenerator {
                 }
                 yield TiledScriptGenerator.generate(tc);
             }
+            case OBJECT_CROPS -> {
+                if (!(config instanceof ObjectCropConfig occ)) {
+                    throw new IllegalArgumentException("Expected ObjectCropConfig");
+                }
+                yield ObjectCropScriptGenerator.generate(occ);
+            }
         };
     }
 

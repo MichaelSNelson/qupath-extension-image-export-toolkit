@@ -1,9 +1,12 @@
 package qupath.ext.quiet.export;
 
 import java.awt.AlphaComposite;
+import java.awt.BasicStroke;
 import java.awt.Color;
 import java.awt.Graphics2D;
 import java.awt.RenderingHints;
+import java.awt.Shape;
+import java.awt.geom.AffineTransform;
 import java.awt.image.BufferedImage;
 import java.awt.image.WritableRaster;
 import java.io.File;
@@ -12,11 +15,14 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.util.Collection;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.stream.Collectors;
 
 import org.jfree.svg.SVGGraphics2D;
+import org.jfree.svg.SVGHints;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -450,9 +456,30 @@ public class RenderedImageExporter {
             int imageWidth, int imageHeight,
             String panelLabel,
             double downsample) throws Exception {
+        drawVectorOverlays(g2d, imageData, densityServer, config,
+                regionX, regionY, regionW, regionH,
+                imageWidth, imageHeight, panelLabel, downsample, false);
+    }
 
-        // Paint object overlays with region offset
-        if (config.isIncludeAnnotations() || config.isIncludeDetections()) {
+    /**
+     * Draw all vector-appropriate overlays onto a Graphics2D context.
+     *
+     * @param skipObjectPainting if true, skip painting objects (used when SVG vector
+     *                           objects are painted separately via paintObjectsAsSvg)
+     */
+    private static void drawVectorOverlays(
+            Graphics2D g2d,
+            ImageData<BufferedImage> imageData,
+            ImageServer<BufferedImage> densityServer,
+            RenderedExportConfig config,
+            int regionX, int regionY, int regionW, int regionH,
+            int imageWidth, int imageHeight,
+            String panelLabel,
+            double downsample,
+            boolean skipObjectPainting) throws Exception {
+
+        // Paint object overlays with region offset (skip when done via SVG vector path)
+        if (!skipObjectPainting && (config.isIncludeAnnotations() || config.isIncludeDetections())) {
             g2d.setComposite(AlphaComposite.getInstance(
                     AlphaComposite.SRC_OVER, 1.0f));
             paintObjectsInRegion(g2d, imageData, downsample,
@@ -514,6 +541,11 @@ public class RenderedImageExporter {
     /**
      * Render a region as an SVG document with raster base embedded as PNG
      * and vector overlays (annotations, scale bar, labels) as native SVG elements.
+     * <p>
+     * Object overlays are rendered as true SVG path elements (via
+     * {@link #paintObjectsAsSvg}) rather than rasterized through HierarchyOverlay,
+     * making them individually selectable and editable in vector editors
+     * (Illustrator, Inkscape).
      */
     private static String renderRegionToSvg(
             ImageData<BufferedImage> imageData,
@@ -537,11 +569,19 @@ public class RenderedImageExporter {
         // Embed raster base as PNG inside SVG
         svgG2d.drawImage(raster, 0, 0, null);
 
-        // Draw overlays as SVG vector elements
+        // Paint object overlays as true SVG vector path elements
+        if (config.isIncludeAnnotations() || config.isIncludeDetections()) {
+            paintObjectsAsSvg(svgG2d, imageData, config,
+                    x, y, w, h, config.getDownsample());
+        }
+
+        // Draw remaining overlays (scale bar, color scale bar, panel label)
+        // but skip object painting since we already did it as SVG vectors
         drawVectorOverlays(svgG2d, imageData, densityServer, config,
                 x, y, w, h,
                 raster.getWidth(), raster.getHeight(),
-                panelLabel, config.getDownsample());
+                panelLabel, config.getDownsample(),
+                true);  // skipObjectPainting = true
 
         svgG2d.dispose();
         return svgG2d.getSVGDocument();
@@ -552,6 +592,120 @@ public class RenderedImageExporter {
      */
     private static void writeSvg(String svgDocument, File outputFile) throws IOException {
         Files.writeString(outputFile.toPath(), svgDocument, StandardCharsets.UTF_8);
+    }
+
+    /**
+     * Paint QuPath objects as native SVG vector elements using ROI shapes.
+     * <p>
+     * Each PathClass is grouped into an SVG {@code <g>} element via JFreeSVG
+     * {@link SVGHints}. Individual objects become {@code <path>} elements with
+     * proper fill/stroke attributes, making them individually selectable and
+     * editable in vector editors (Illustrator, Inkscape).
+     *
+     * @param g2d       the SVGGraphics2D context
+     * @param imageData the image data containing the object hierarchy
+     * @param config    rendered export config (for annotation/detection inclusion)
+     * @param regionX   left pixel coordinate of the region
+     * @param regionY   top pixel coordinate of the region
+     * @param regionW   width of the region in pixels
+     * @param regionH   height of the region in pixels
+     * @param downsample downsample factor
+     */
+    private static void paintObjectsAsSvg(SVGGraphics2D g2d,
+                                            ImageData<BufferedImage> imageData,
+                                            RenderedExportConfig config,
+                                            int regionX, int regionY,
+                                            int regionW, int regionH,
+                                            double downsample) {
+        try {
+            var hierarchy = imageData.getHierarchy();
+            var region = ImageRegion.createInstance(regionX, regionY, regionW, regionH, 0, 0);
+            var allObjects = hierarchy.getObjectsForRegion(null, region, null);
+
+            // Filter by annotation/detection inclusion settings
+            var objects = allObjects.stream()
+                    .filter(o -> o.hasROI())
+                    .filter(o -> {
+                        if (o.isAnnotation()) return config.isIncludeAnnotations();
+                        if (o.isDetection()) return config.isIncludeDetections();
+                        return false;
+                    })
+                    .toList();
+
+            if (objects.isEmpty()) return;
+
+            // Group by PathClass
+            Map<PathClass, List<PathObject>> byClass = objects.stream()
+                    .collect(Collectors.groupingBy(
+                            o -> o.getPathClass() != null ? o.getPathClass() : PathClass.NULL_CLASS,
+                            LinkedHashMap::new, Collectors.toList()));
+
+            double offsetX = -regionX;
+            double offsetY = -regionY;
+            double scale = 1.0 / downsample;
+
+            for (var entry : byClass.entrySet()) {
+                PathClass pathClass = entry.getKey();
+                String className = pathClass == PathClass.NULL_CLASS
+                        ? "Unclassified" : pathClass.getName();
+
+                // Begin SVG group
+                g2d.setRenderingHint(SVGHints.KEY_BEGIN_GROUP, className);
+                g2d.setRenderingHint(SVGHints.KEY_ELEMENT_TITLE, className);
+
+                for (var obj : entry.getValue()) {
+                    Shape shape = obj.getROI().getShape();
+
+                    // Transform to output coordinates
+                    AffineTransform tx = new AffineTransform();
+                    tx.scale(scale, scale);
+                    tx.translate(offsetX, offsetY);
+                    Shape transformed = tx.createTransformedShape(shape);
+
+                    // Resolve color from object or class
+                    Integer color = obj.getColor();
+                    if (color == null && obj.getPathClass() != null) {
+                        color = obj.getPathClass().getColor();
+                    }
+                    Color awtColor = (color != null)
+                            ? makeAwtColor(color) : Color.YELLOW;
+
+                    // Set element ID for individual selectability
+                    String objId = className + "_" + obj.getID();
+                    g2d.setRenderingHint(SVGHints.KEY_ELEMENT_ID, objId);
+
+                    // Fill with transparency
+                    boolean shouldFill = obj.isAnnotation() && config.isFillAnnotations();
+                    if (shouldFill) {
+                        g2d.setColor(new Color(
+                                awtColor.getRed(), awtColor.getGreen(),
+                                awtColor.getBlue(), 64));
+                        g2d.fill(transformed);
+                    }
+
+                    // Stroke
+                    g2d.setColor(awtColor);
+                    g2d.setStroke(new BasicStroke(1.5f));
+                    g2d.draw(transformed);
+                }
+
+                // End SVG group
+                g2d.setRenderingHint(SVGHints.KEY_END_GROUP, "true");
+            }
+        } catch (Exception e) {
+            logger.warn("Failed to paint SVG vector objects: {}", e.getMessage());
+        }
+    }
+
+    /**
+     * Convert a QuPath packed ARGB integer color to a java.awt.Color.
+     */
+    private static Color makeAwtColor(int packedColor) {
+        int a = (packedColor >> 24) & 0xFF;
+        int r = (packedColor >> 16) & 0xFF;
+        int g = (packedColor >> 8) & 0xFF;
+        int b = packedColor & 0xFF;
+        return new Color(r, g, b, a > 0 ? a : 255);
     }
 
     /**

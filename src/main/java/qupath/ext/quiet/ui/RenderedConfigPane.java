@@ -27,6 +27,7 @@ import javafx.scene.control.Slider;
 import javafx.scene.control.Spinner;
 import javafx.scene.control.SpinnerValueFactory;
 import javafx.scene.control.TextField;
+import javafx.scene.control.TitledPane;
 import javafx.scene.control.Tooltip;
 import javafx.scene.image.ImageView;
 import javafx.scene.image.WritableImage;
@@ -34,6 +35,7 @@ import javafx.scene.layout.GridPane;
 import javafx.scene.layout.HBox;
 import javafx.scene.layout.Priority;
 import javafx.scene.layout.StackPane;
+import javafx.scene.layout.VBox;
 import javafx.scene.text.Font;
 import javafx.scene.text.FontWeight;
 import javafx.stage.Stage;
@@ -59,7 +61,7 @@ import qupath.lib.objects.classes.PathClass;
 /**
  * Step 2a of the export wizard: Configure rendered image export.
  */
-public class RenderedConfigPane extends GridPane {
+public class RenderedConfigPane extends VBox {
 
     private static final Logger logger = LoggerFactory.getLogger(RenderedConfigPane.class);
     private static final ResourceBundle resources =
@@ -130,10 +132,13 @@ public class RenderedConfigPane extends GridPane {
     private Label scaleBarColorLabel;
     private Label scaleBarFontSizeLabel;
 
+    // Section TitledPanes needing visibility toggling
+    private TitledPane overlaySourceSection;
+    private TitledPane colorScaleBarSection;
+
     public RenderedConfigPane(QuPathGUI qupath) {
         this.qupath = qupath;
-        setHgap(10);
-        setVgap(10);
+        setSpacing(10);
         setPadding(new Insets(10));
         buildUI();
         populateClassifiers();
@@ -143,15 +148,76 @@ public class RenderedConfigPane extends GridPane {
     }
 
     private void buildUI() {
-        int row = 0;
-
         var header = new Label(resources.getString("wizard.step2.title") + " - Rendered Image");
         header.setFont(Font.font(null, FontWeight.BOLD, 14));
-        add(header, 0, row, 2, 1);
-        row++;
+
+        var imageSettingsSection = buildImageSettingsSection();
+        overlaySourceSection = buildOverlaySourceSection();
+        var objectOverlaysSection = buildObjectOverlaysSection();
+        var scaleBarSection = buildScaleBarSection();
+        colorScaleBarSection = buildColorScaleBarSection();
+        var panelLabelSection = buildPanelLabelSection();
+
+        previewButton = new Button(resources.getString("rendered.label.previewImage"));
+        previewButton.setOnAction(e -> handlePreview());
+        previewButton.setMaxWidth(Double.MAX_VALUE);
+
+        getChildren().addAll(header, imageSettingsSection, overlaySourceSection,
+                objectOverlaysSection, scaleBarSection, colorScaleBarSection,
+                panelLabelSection, previewButton);
+
+        // Scale bar visibility toggling + SVG auto-default
+        showScaleBarCheck.selectedProperty().addListener(
+                (obs, oldVal, newVal) -> {
+                    if (newVal) maybeSwitchToSvg();
+                    updateScaleBarVisibility(newVal);
+                });
+        updateScaleBarVisibility(false);
+
+        // Color scale bar visibility toggling + SVG auto-default
+        showColorScaleBarCheck.selectedProperty().addListener(
+                (obs, oldVal, newVal) -> {
+                    if (newVal) maybeSwitchToSvg();
+                    updateColorScaleBarVisibility(newVal);
+                });
+        updateColorScaleBarVisibility(false);
+
+        // Panel label visibility toggling + SVG auto-default
+        showPanelLabelCheck.selectedProperty().addListener(
+                (obs, oldVal, newVal) -> {
+                    if (newVal) maybeSwitchToSvg();
+                    updatePanelLabelVisibility(newVal);
+                });
+        updatePanelLabelVisibility(false);
+
+        // Object overlay SVG auto-default
+        includeAnnotationsCheck.selectedProperty().addListener(
+                (obs, oldVal, newVal) -> { if (newVal) maybeSwitchToSvg(); });
+        includeDetectionsCheck.selectedProperty().addListener(
+                (obs, oldVal, newVal) -> { if (newVal) maybeSwitchToSvg(); });
+
+        // Preview button enabled state depends on image being open
+        updatePreviewButtonState();
+        qupath.imageDataProperty().addListener((obs, oldVal, newVal) -> updatePreviewButtonState());
+
+        // Mode switching
+        modeCombo.valueProperty().addListener((obs, oldMode, newMode) -> updateModeVisibility(newMode));
+        updateModeVisibility(RenderedExportConfig.RenderMode.CLASSIFIER_OVERLAY);
+
+        // Region type visibility (default hidden)
+        updateRegionTypeVisibility(RenderedExportConfig.RegionType.WHOLE_IMAGE);
+
+        wireTooltips();
+    }
+
+    private TitledPane buildImageSettingsSection() {
+        var grid = new GridPane();
+        grid.setHgap(10);
+        grid.setVgap(10);
+        int row = 0;
 
         // Render mode selection
-        add(new Label(resources.getString("rendered.label.mode")), 0, row);
+        grid.add(new Label(resources.getString("rendered.label.mode")), 0, row);
         modeCombo = new ComboBox<>(FXCollections.observableArrayList(
                 RenderedExportConfig.RenderMode.values()));
         modeCombo.setValue(RenderedExportConfig.RenderMode.CLASSIFIER_OVERLAY);
@@ -170,11 +236,11 @@ public class RenderedConfigPane extends GridPane {
                 return RenderedExportConfig.RenderMode.CLASSIFIER_OVERLAY;
             }
         });
-        add(modeCombo, 1, row);
+        grid.add(modeCombo, 1, row);
         row++;
 
         // Region type selection
-        add(new Label(resources.getString("rendered.label.regionType")), 0, row);
+        grid.add(new Label(resources.getString("rendered.label.regionType")), 0, row);
         regionTypeCombo = new ComboBox<>(FXCollections.observableArrayList(
                 RenderedExportConfig.RegionType.values()));
         regionTypeCombo.setValue(RenderedExportConfig.RegionType.WHOLE_IMAGE);
@@ -194,11 +260,35 @@ public class RenderedConfigPane extends GridPane {
         });
         regionTypeCombo.valueProperty().addListener(
                 (obs, oldVal, newVal) -> updateRegionTypeVisibility(newVal));
-        add(regionTypeCombo, 1, row);
+        grid.add(regionTypeCombo, 1, row);
+        row++;
+
+        // Classification filter (ALL_ANNOTATIONS mode only)
+        classificationFilterLabel = new Label(resources.getString("rendered.label.classificationFilter"));
+        grid.add(classificationFilterLabel, 0, row);
+        classificationCombo = new CheckComboBox<>();
+        classificationCombo.setMaxWidth(Double.MAX_VALUE);
+        GridPane.setHgrow(classificationCombo, Priority.ALWAYS);
+        classificationCombo.setTitle("All selected");
+        FXUtils.installSelectAllOrNoneMenu(classificationCombo);
+        var classRefreshButton = new Button(resources.getString("button.refresh"));
+        classRefreshButton.setOnAction(e -> populateAnnotationClassifications());
+        classificationFilterBox = new HBox(5, classificationCombo, classRefreshButton);
+        HBox.setHgrow(classificationCombo, Priority.ALWAYS);
+        grid.add(classificationFilterBox, 1, row);
+        row++;
+
+        // Padding spinner (ALL_ANNOTATIONS mode only)
+        paddingLabel = new Label(resources.getString("rendered.label.padding"));
+        grid.add(paddingLabel, 0, row);
+        paddingSpinner = new Spinner<>(new SpinnerValueFactory.IntegerSpinnerValueFactory(0, 10000, 0, 10));
+        paddingSpinner.setEditable(true);
+        paddingSpinner.setPrefWidth(100);
+        grid.add(paddingSpinner, 1, row);
         row++;
 
         // Display settings mode
-        add(new Label(resources.getString("rendered.label.displaySettings")), 0, row);
+        grid.add(new Label(resources.getString("rendered.label.displaySettings")), 0, row);
         displaySettingsCombo = new ComboBox<>(FXCollections.observableArrayList(
                 DisplaySettingsMode.values()));
         displaySettingsCombo.setValue(DisplaySettingsMode.PER_IMAGE_SAVED);
@@ -245,12 +335,12 @@ public class RenderedConfigPane extends GridPane {
         });
         displaySettingsCombo.valueProperty().addListener(
                 (obs, oldVal, newVal) -> updateDisplaySettingsVisibility(newVal));
-        add(displaySettingsCombo, 1, row);
+        grid.add(displaySettingsCombo, 1, row);
         row++;
 
         // Preset name selection (SAVED_PRESET mode only)
         presetLabel = new Label(resources.getString("rendered.label.presetName"));
-        add(presetLabel, 0, row);
+        grid.add(presetLabel, 0, row);
         presetNameCombo = new ComboBox<>();
         presetNameCombo.setMaxWidth(Double.MAX_VALUE);
         GridPane.setHgrow(presetNameCombo, Priority.ALWAYS);
@@ -259,24 +349,11 @@ public class RenderedConfigPane extends GridPane {
         presetRefreshButton.setOnAction(e -> populatePresets());
         presetBox = new HBox(5, presetNameCombo, presetRefreshButton);
         HBox.setHgrow(presetNameCombo, Priority.ALWAYS);
-        add(presetBox, 1, row);
-        row++;
-
-        // Classifier selection (classifier mode only)
-        classifierLabel = new Label(resources.getString("rendered.label.classifier"));
-        add(classifierLabel, 0, row);
-        classifierCombo = new ComboBox<>();
-        classifierCombo.setMaxWidth(Double.MAX_VALUE);
-        GridPane.setHgrow(classifierCombo, Priority.ALWAYS);
-        var refreshButton = new Button(resources.getString("button.refresh"));
-        refreshButton.setOnAction(e -> populateClassifiers());
-        classifierBox = new HBox(5, classifierCombo, refreshButton);
-        HBox.setHgrow(classifierCombo, Priority.ALWAYS);
-        add(classifierBox, 1, row);
+        grid.add(presetBox, 1, row);
         row++;
 
         // Opacity slider
-        add(new Label(resources.getString("rendered.label.opacity")), 0, row);
+        grid.add(new Label(resources.getString("rendered.label.opacity")), 0, row);
         opacitySlider = new Slider(0.0, 1.0, 0.5);
         opacitySlider.setShowTickMarks(true);
         opacitySlider.setShowTickLabels(true);
@@ -288,11 +365,11 @@ public class RenderedConfigPane extends GridPane {
                 opacityValueLabel.setText(String.format("%.2f", newVal.doubleValue())));
         var opacityBox = new HBox(5, opacitySlider, opacityValueLabel);
         HBox.setHgrow(opacitySlider, Priority.ALWAYS);
-        add(opacityBox, 1, row);
+        grid.add(opacityBox, 1, row);
         row++;
 
         // Downsample combo
-        add(new Label(resources.getString("rendered.label.downsample")), 0, row);
+        grid.add(new Label(resources.getString("rendered.label.downsample")), 0, row);
         downsampleCombo = new ComboBox<>(FXCollections.observableArrayList(
                 1.0, 2.0, 4.0, 8.0, 16.0, 32.0));
         downsampleCombo.setEditable(true);
@@ -310,14 +387,14 @@ public class RenderedConfigPane extends GridPane {
                 catch (NumberFormatException e) { return 4.0; }
             }
         });
-        add(downsampleCombo, 1, row);
+        grid.add(downsampleCombo, 1, row);
         row++;
 
         // Format combo
-        add(new Label(resources.getString("rendered.label.format")), 0, row);
+        grid.add(new Label(resources.getString("rendered.label.format")), 0, row);
         formatCombo = new ComboBox<>(FXCollections.observableArrayList(OutputFormat.values()));
         formatCombo.setValue(OutputFormat.PNG);
-        add(formatCombo, 1, row);
+        grid.add(formatCombo, 1, row);
         row++;
 
         // Format info label
@@ -325,61 +402,103 @@ public class RenderedConfigPane extends GridPane {
         formatInfoLabel.setWrapText(true);
         formatInfoLabel.setMaxWidth(400);
         formatInfoLabel.setStyle("-fx-font-size: 11; -fx-text-fill: #666666;");
-        add(formatInfoLabel, 1, row);
+        grid.add(formatInfoLabel, 1, row);
         row++;
 
         formatCombo.valueProperty().addListener((obs, old, val) -> updateFormatInfo(val));
         updateFormatInfo(OutputFormat.PNG);
 
-        // Classification filter (ALL_ANNOTATIONS mode only)
-        classificationFilterLabel = new Label(resources.getString("rendered.label.classificationFilter"));
-        add(classificationFilterLabel, 0, row);
-        classificationCombo = new CheckComboBox<>();
-        classificationCombo.setMaxWidth(Double.MAX_VALUE);
-        GridPane.setHgrow(classificationCombo, Priority.ALWAYS);
-        classificationCombo.setTitle("All selected");
-        FXUtils.installSelectAllOrNoneMenu(classificationCombo);
-        var classRefreshButton = new Button(resources.getString("button.refresh"));
-        classRefreshButton.setOnAction(e -> populateAnnotationClassifications());
-        classificationFilterBox = new HBox(5, classificationCombo, classRefreshButton);
-        HBox.setHgrow(classificationCombo, Priority.ALWAYS);
-        add(classificationFilterBox, 1, row);
+        return SectionBuilder.createSection(
+                resources.getString("rendered.section.imageSettings"), true, grid);
+    }
+
+    private TitledPane buildOverlaySourceSection() {
+        var grid = new GridPane();
+        grid.setHgap(10);
+        grid.setVgap(10);
+        int row = 0;
+
+        // Classifier selection (classifier mode only)
+        classifierLabel = new Label(resources.getString("rendered.label.classifier"));
+        grid.add(classifierLabel, 0, row);
+        classifierCombo = new ComboBox<>();
+        classifierCombo.setMaxWidth(Double.MAX_VALUE);
+        GridPane.setHgrow(classifierCombo, Priority.ALWAYS);
+        var refreshButton = new Button(resources.getString("button.refresh"));
+        refreshButton.setOnAction(e -> populateClassifiers());
+        classifierBox = new HBox(5, classifierCombo, refreshButton);
+        HBox.setHgrow(classifierCombo, Priority.ALWAYS);
+        grid.add(classifierBox, 1, row);
         row++;
 
-        // Padding spinner (ALL_ANNOTATIONS mode only)
-        paddingLabel = new Label(resources.getString("rendered.label.padding"));
-        add(paddingLabel, 0, row);
-        paddingSpinner = new Spinner<>(new SpinnerValueFactory.IntegerSpinnerValueFactory(0, 10000, 0, 10));
-        paddingSpinner.setEditable(true);
-        paddingSpinner.setPrefWidth(100);
-        add(paddingSpinner, 1, row);
+        // Density map selector (density map mode only)
+        densityMapLabel = new Label(resources.getString("rendered.label.densityMap"));
+        grid.add(densityMapLabel, 0, row);
+        densityMapCombo = new ComboBox<>();
+        densityMapCombo.setMaxWidth(Double.MAX_VALUE);
+        GridPane.setHgrow(densityMapCombo, Priority.ALWAYS);
+        var dmRefreshButton = new Button(resources.getString("button.refresh"));
+        dmRefreshButton.setOnAction(e -> populateDensityMaps());
+        densityMapBox = new HBox(5, densityMapCombo, dmRefreshButton);
+        HBox.setHgrow(densityMapCombo, Priority.ALWAYS);
+        grid.add(densityMapBox, 1, row);
         row++;
 
-        // Object overlay options
+        // Colormap/LUT selector (density map mode only)
+        colormapLabel = new Label(resources.getString("rendered.label.colormap"));
+        grid.add(colormapLabel, 0, row);
+        colormapCombo = new ComboBox<>();
+        colormapCombo.getItems().addAll(ColorMaps.getColorMaps().keySet());
+        colormapCombo.setValue("Viridis");
+        // Custom cell factory to show colormap gradient swatches
+        colormapCombo.setCellFactory(lv -> createColormapCell());
+        colormapCombo.setButtonCell(createColormapCell());
+        grid.add(colormapCombo, 1, row);
+        row++;
+
+        return SectionBuilder.createSection(
+                resources.getString("rendered.section.overlaySource"), true, grid);
+    }
+
+    private TitledPane buildObjectOverlaysSection() {
+        var grid = new GridPane();
+        grid.setHgap(10);
+        grid.setVgap(10);
+        int row = 0;
+
         includeAnnotationsCheck = new CheckBox(resources.getString("rendered.label.includeAnnotations"));
-        add(includeAnnotationsCheck, 1, row);
+        grid.add(includeAnnotationsCheck, 0, row, 2, 1);
         row++;
 
         includeDetectionsCheck = new CheckBox(resources.getString("rendered.label.includeDetections"));
         includeDetectionsCheck.setSelected(true);
-        add(includeDetectionsCheck, 1, row);
+        grid.add(includeDetectionsCheck, 0, row, 2, 1);
         row++;
 
         fillAnnotationsCheck = new CheckBox(resources.getString("rendered.label.fillAnnotations"));
-        add(fillAnnotationsCheck, 1, row);
+        grid.add(fillAnnotationsCheck, 0, row, 2, 1);
         row++;
 
         showNamesCheck = new CheckBox(resources.getString("rendered.label.showNames"));
-        add(showNamesCheck, 1, row);
+        grid.add(showNamesCheck, 0, row, 2, 1);
         row++;
 
-        // Scale bar options
+        return SectionBuilder.createSection(
+                resources.getString("rendered.section.objectOverlays"), false, grid);
+    }
+
+    private TitledPane buildScaleBarSection() {
+        var grid = new GridPane();
+        grid.setHgap(10);
+        grid.setVgap(10);
+        int row = 0;
+
         showScaleBarCheck = new CheckBox(resources.getString("rendered.label.showScaleBar"));
-        add(showScaleBarCheck, 1, row);
+        grid.add(showScaleBarCheck, 0, row, 2, 1);
         row++;
 
         scaleBarPositionLabel = new Label(resources.getString("rendered.label.scaleBarPosition"));
-        add(scaleBarPositionLabel, 0, row);
+        grid.add(scaleBarPositionLabel, 0, row);
         scaleBarPositionCombo = new ComboBox<>(FXCollections.observableArrayList(
                 ScaleBarRenderer.Position.values()));
         scaleBarPositionCombo.setValue(ScaleBarRenderer.Position.LOWER_RIGHT);
@@ -399,17 +518,17 @@ public class RenderedConfigPane extends GridPane {
                 return ScaleBarRenderer.Position.LOWER_RIGHT;
             }
         });
-        add(scaleBarPositionCombo, 1, row);
+        grid.add(scaleBarPositionCombo, 1, row);
         row++;
 
         scaleBarColorLabel = new Label(resources.getString("rendered.label.scaleBarColor"));
-        add(scaleBarColorLabel, 0, row);
+        grid.add(scaleBarColorLabel, 0, row);
         scaleBarColorPicker = new ColorPicker(javafx.scene.paint.Color.WHITE);
-        add(scaleBarColorPicker, 1, row);
+        grid.add(scaleBarColorPicker, 1, row);
         row++;
 
         scaleBarFontSizeLabel = new Label(resources.getString("rendered.label.scaleBarFontSize"));
-        add(scaleBarFontSizeLabel, 0, row);
+        grid.add(scaleBarFontSizeLabel, 0, row);
         var fontSizeFactory = new SpinnerValueFactory.IntegerSpinnerValueFactory(0, 72, 0);
         fontSizeFactory.setConverter(new StringConverter<>() {
             @Override
@@ -430,46 +549,30 @@ public class RenderedConfigPane extends GridPane {
         });
         scaleBarFontSizeSpinner = new Spinner<>(fontSizeFactory);
         scaleBarFontSizeSpinner.setEditable(true);
-        add(scaleBarFontSizeSpinner, 1, row);
+        grid.add(scaleBarFontSizeSpinner, 1, row);
         row++;
 
         scaleBarBoldCheck = new CheckBox(resources.getString("rendered.label.scaleBarBold"));
         scaleBarBoldCheck.setSelected(true);
-        add(scaleBarBoldCheck, 1, row);
+        grid.add(scaleBarBoldCheck, 0, row, 2, 1);
         row++;
 
-        // Density map selector (density map mode only)
-        densityMapLabel = new Label(resources.getString("rendered.label.densityMap"));
-        add(densityMapLabel, 0, row);
-        densityMapCombo = new ComboBox<>();
-        densityMapCombo.setMaxWidth(Double.MAX_VALUE);
-        GridPane.setHgrow(densityMapCombo, Priority.ALWAYS);
-        var dmRefreshButton = new Button(resources.getString("button.refresh"));
-        dmRefreshButton.setOnAction(e -> populateDensityMaps());
-        densityMapBox = new HBox(5, densityMapCombo, dmRefreshButton);
-        HBox.setHgrow(densityMapCombo, Priority.ALWAYS);
-        add(densityMapBox, 1, row);
-        row++;
+        return SectionBuilder.createSection(
+                resources.getString("rendered.section.scaleBar"), false, grid);
+    }
 
-        // Colormap/LUT selector (density map mode only)
-        colormapLabel = new Label(resources.getString("rendered.label.colormap"));
-        add(colormapLabel, 0, row);
-        colormapCombo = new ComboBox<>();
-        colormapCombo.getItems().addAll(ColorMaps.getColorMaps().keySet());
-        colormapCombo.setValue("Viridis");
-        // Custom cell factory to show colormap gradient swatches
-        colormapCombo.setCellFactory(lv -> createColormapCell());
-        colormapCombo.setButtonCell(createColormapCell());
-        add(colormapCombo, 1, row);
-        row++;
+    private TitledPane buildColorScaleBarSection() {
+        var grid = new GridPane();
+        grid.setHgap(10);
+        grid.setVgap(10);
+        int row = 0;
 
-        // Color scale bar options
         showColorScaleBarCheck = new CheckBox(resources.getString("rendered.label.showColorScaleBar"));
-        add(showColorScaleBarCheck, 1, row);
+        grid.add(showColorScaleBarCheck, 0, row, 2, 1);
         row++;
 
         colorScaleBarPositionLabel = new Label(resources.getString("rendered.label.colorScaleBarPosition"));
-        add(colorScaleBarPositionLabel, 0, row);
+        grid.add(colorScaleBarPositionLabel, 0, row);
         colorScaleBarPositionCombo = new ComboBox<>(FXCollections.observableArrayList(
                 ScaleBarRenderer.Position.values()));
         colorScaleBarPositionCombo.setValue(ScaleBarRenderer.Position.LOWER_RIGHT);
@@ -489,11 +592,11 @@ public class RenderedConfigPane extends GridPane {
                 return ScaleBarRenderer.Position.LOWER_RIGHT;
             }
         });
-        add(colorScaleBarPositionCombo, 1, row);
+        grid.add(colorScaleBarPositionCombo, 1, row);
         row++;
 
         colorScaleBarFontSizeLabel = new Label(resources.getString("rendered.label.colorScaleBarFontSize"));
-        add(colorScaleBarFontSizeLabel, 0, row);
+        grid.add(colorScaleBarFontSizeLabel, 0, row);
         var csFontSizeFactory = new SpinnerValueFactory.IntegerSpinnerValueFactory(0, 72, 0);
         csFontSizeFactory.setConverter(new StringConverter<>() {
             @Override
@@ -514,28 +617,37 @@ public class RenderedConfigPane extends GridPane {
         });
         colorScaleBarFontSizeSpinner = new Spinner<>(csFontSizeFactory);
         colorScaleBarFontSizeSpinner.setEditable(true);
-        add(colorScaleBarFontSizeSpinner, 1, row);
+        grid.add(colorScaleBarFontSizeSpinner, 1, row);
         row++;
 
         colorScaleBarBoldCheck = new CheckBox(resources.getString("rendered.label.colorScaleBarBold"));
         colorScaleBarBoldCheck.setSelected(true);
-        add(colorScaleBarBoldCheck, 1, row);
+        grid.add(colorScaleBarBoldCheck, 0, row, 2, 1);
         row++;
 
-        // Panel label options
+        return SectionBuilder.createSection(
+                resources.getString("rendered.section.colorScaleBar"), false, grid);
+    }
+
+    private TitledPane buildPanelLabelSection() {
+        var grid = new GridPane();
+        grid.setHgap(10);
+        grid.setVgap(10);
+        int row = 0;
+
         showPanelLabelCheck = new CheckBox(resources.getString("rendered.label.showPanelLabel"));
-        add(showPanelLabelCheck, 1, row);
+        grid.add(showPanelLabelCheck, 0, row, 2, 1);
         row++;
 
         panelLabelTextLabel = new Label(resources.getString("rendered.label.panelLabelText"));
-        add(panelLabelTextLabel, 0, row);
+        grid.add(panelLabelTextLabel, 0, row);
         panelLabelTextField = new TextField();
         panelLabelTextField.setPromptText("Auto (A, B, C...)");
-        add(panelLabelTextField, 1, row);
+        grid.add(panelLabelTextField, 1, row);
         row++;
 
         panelLabelPositionLabel = new Label(resources.getString("rendered.label.panelLabelPosition"));
-        add(panelLabelPositionLabel, 0, row);
+        grid.add(panelLabelPositionLabel, 0, row);
         panelLabelPositionCombo = new ComboBox<>(FXCollections.observableArrayList(
                 ScaleBarRenderer.Position.values()));
         panelLabelPositionCombo.setValue(ScaleBarRenderer.Position.UPPER_LEFT);
@@ -555,11 +667,11 @@ public class RenderedConfigPane extends GridPane {
                 return ScaleBarRenderer.Position.UPPER_LEFT;
             }
         });
-        add(panelLabelPositionCombo, 1, row);
+        grid.add(panelLabelPositionCombo, 1, row);
         row++;
 
         panelLabelFontSizeLabel = new Label(resources.getString("rendered.label.panelLabelFontSize"));
-        add(panelLabelFontSizeLabel, 0, row);
+        grid.add(panelLabelFontSizeLabel, 0, row);
         var plFontSizeFactory = new SpinnerValueFactory.IntegerSpinnerValueFactory(0, 72, 0);
         plFontSizeFactory.setConverter(new StringConverter<>() {
             @Override
@@ -580,69 +692,24 @@ public class RenderedConfigPane extends GridPane {
         });
         panelLabelFontSizeSpinner = new Spinner<>(plFontSizeFactory);
         panelLabelFontSizeSpinner.setEditable(true);
-        add(panelLabelFontSizeSpinner, 1, row);
+        grid.add(panelLabelFontSizeSpinner, 1, row);
         row++;
 
         panelLabelBoldCheck = new CheckBox(resources.getString("rendered.label.panelLabelBold"));
         panelLabelBoldCheck.setSelected(true);
-        add(panelLabelBoldCheck, 1, row);
+        grid.add(panelLabelBoldCheck, 0, row, 2, 1);
         row++;
 
-        // Preview button
-        previewButton = new Button(resources.getString("rendered.label.previewImage"));
-        previewButton.setOnAction(e -> handlePreview());
-        previewButton.setMaxWidth(Double.MAX_VALUE);
-        add(previewButton, 0, row, 2, 1);
-        row++;
-
-        // Scale bar visibility toggling + SVG auto-default
-        showScaleBarCheck.selectedProperty().addListener(
-                (obs, oldVal, newVal) -> {
-                    if (newVal) maybeSwitchToSvg();
-                    updateScaleBarVisibility(newVal);
-                });
-        updateScaleBarVisibility(false);
-
-        // Color scale bar visibility toggling + SVG auto-default
-        showColorScaleBarCheck.selectedProperty().addListener(
-                (obs, oldVal, newVal) -> {
-                    if (newVal) maybeSwitchToSvg();
-                    updateColorScaleBarVisibility(newVal);
-                });
-        updateColorScaleBarVisibility(false);
-
-        // Panel label visibility toggling + SVG auto-default
-        showPanelLabelCheck.selectedProperty().addListener(
-                (obs, oldVal, newVal) -> {
-                    if (newVal) maybeSwitchToSvg();
-                    updatePanelLabelVisibility(newVal);
-                });
-        updatePanelLabelVisibility(false);
-
-        // Object overlay SVG auto-default
-        includeAnnotationsCheck.selectedProperty().addListener(
-                (obs, oldVal, newVal) -> { if (newVal) maybeSwitchToSvg(); });
-        includeDetectionsCheck.selectedProperty().addListener(
-                (obs, oldVal, newVal) -> { if (newVal) maybeSwitchToSvg(); });
-
-        // Preview button enabled state depends on image being open
-        updatePreviewButtonState();
-        qupath.imageDataProperty().addListener((obs, oldVal, newVal) -> updatePreviewButtonState());
-
-        // Mode switching
-        modeCombo.valueProperty().addListener((obs, oldMode, newMode) -> updateModeVisibility(newMode));
-        updateModeVisibility(RenderedExportConfig.RenderMode.CLASSIFIER_OVERLAY);
-
-        // Region type visibility (default hidden)
-        updateRegionTypeVisibility(RenderedExportConfig.RegionType.WHOLE_IMAGE);
-
-        wireTooltips();
+        return SectionBuilder.createSection(
+                resources.getString("rendered.section.panelLabel"), false, grid);
     }
 
     private void updateModeVisibility(RenderedExportConfig.RenderMode mode) {
         boolean isClassifier = (mode == RenderedExportConfig.RenderMode.CLASSIFIER_OVERLAY);
         boolean isDensityMap = (mode == RenderedExportConfig.RenderMode.DENSITY_MAP_OVERLAY);
+        boolean isObjectOverlay = (mode == RenderedExportConfig.RenderMode.OBJECT_OVERLAY);
 
+        // Individual controls within overlay source section
         classifierLabel.setVisible(isClassifier);
         classifierLabel.setManaged(isClassifier);
         classifierBox.setVisible(isClassifier);
@@ -657,9 +724,13 @@ public class RenderedConfigPane extends GridPane {
         colormapCombo.setVisible(isDensityMap);
         colormapCombo.setManaged(isDensityMap);
 
-        // Color scale bar only makes sense for density map mode
-        showColorScaleBarCheck.setVisible(isDensityMap);
-        showColorScaleBarCheck.setManaged(isDensityMap);
+        // Toggle entire overlay source section
+        overlaySourceSection.setVisible(!isObjectOverlay);
+        overlaySourceSection.setManaged(!isObjectOverlay);
+
+        // Color scale bar section only for density map mode
+        colorScaleBarSection.setVisible(isDensityMap);
+        colorScaleBarSection.setManaged(isDensityMap);
         if (!isDensityMap) {
             updateColorScaleBarVisibility(false);
         } else {

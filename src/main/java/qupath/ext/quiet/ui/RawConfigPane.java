@@ -15,6 +15,7 @@ import javafx.scene.control.Label;
 import javafx.scene.control.ListView;
 import javafx.scene.control.Spinner;
 import javafx.scene.control.SpinnerValueFactory;
+import javafx.scene.control.TitledPane;
 import javafx.scene.control.Tooltip;
 import javafx.scene.control.cell.CheckBoxListCell;
 import javafx.scene.layout.GridPane;
@@ -49,12 +50,13 @@ public class RawConfigPane extends VBox {
     private ListView<ChannelItem> channelListView;
 
     // Pyramid options
-    private Label pyramidLevelsLabel;
     private Spinner<Integer> pyramidLevelsSpinner;
-    private Label compressionLabel;
     private ComboBox<String> compressionCombo;
-    private Label tileSizeLabel;
     private Spinner<Integer> tileSizeSpinner;
+
+    // Collapsible sections
+    private TitledPane pyramidSection;
+    private TitledPane channelSection;
 
     // Track if channels have been populated
     private boolean channelsPopulated = false;
@@ -70,6 +72,7 @@ public class RawConfigPane extends VBox {
         var header = new Label(resources.getString("wizard.step2.title") + " - Raw Image Data");
         header.setFont(Font.font(null, FontWeight.BOLD, 14));
 
+        // --- Section 1: Image Settings ---
         var grid = new GridPane();
         grid.setHgap(10);
         grid.setVgap(10);
@@ -138,34 +141,41 @@ public class RawConfigPane extends VBox {
         paddingSpinner.setEditable(true);
         paddingSpinner.setPrefWidth(100);
         grid.add(paddingSpinner, 1, row);
-        row++;
 
-        // Pyramid options (visible only for OME_TIFF_PYRAMID format)
-        pyramidLevelsLabel = new Label(resources.getString("raw.label.pyramidLevels"));
-        grid.add(pyramidLevelsLabel, 0, row);
+        var imageSettingsSection = SectionBuilder.createSection(
+                resources.getString("raw.section.imageSettings"), true, grid);
+
+        // --- Section 2: Pyramid Options ---
+        var pyramidGrid = new GridPane();
+        pyramidGrid.setHgap(10);
+        pyramidGrid.setVgap(10);
+
+        int pRow = 0;
+
+        pyramidGrid.add(new Label(resources.getString("raw.label.pyramidLevels")), 0, pRow);
         pyramidLevelsSpinner = new Spinner<>(new SpinnerValueFactory.IntegerSpinnerValueFactory(1, 10, 4));
         pyramidLevelsSpinner.setEditable(true);
         pyramidLevelsSpinner.setPrefWidth(100);
-        grid.add(pyramidLevelsSpinner, 1, row);
-        row++;
+        pyramidGrid.add(pyramidLevelsSpinner, 1, pRow);
+        pRow++;
 
-        compressionLabel = new Label(resources.getString("raw.label.compression"));
-        grid.add(compressionLabel, 0, row);
+        pyramidGrid.add(new Label(resources.getString("raw.label.compression")), 0, pRow);
         compressionCombo = new ComboBox<>(FXCollections.observableArrayList(
                 "DEFAULT", "LZW", "JPEG", "J2K", "ZLIB", "UNCOMPRESSED"));
         compressionCombo.setValue("DEFAULT");
-        grid.add(compressionCombo, 1, row);
-        row++;
+        pyramidGrid.add(compressionCombo, 1, pRow);
+        pRow++;
 
-        tileSizeLabel = new Label(resources.getString("raw.label.tileSize"));
-        grid.add(tileSizeLabel, 0, row);
+        pyramidGrid.add(new Label(resources.getString("raw.label.tileSize")), 0, pRow);
         tileSizeSpinner = new Spinner<>(new SpinnerValueFactory.IntegerSpinnerValueFactory(64, 2048, 512, 64));
         tileSizeSpinner.setEditable(true);
         tileSizeSpinner.setPrefWidth(100);
-        grid.add(tileSizeSpinner, 1, row);
-        row++;
+        pyramidGrid.add(tileSizeSpinner, 1, pRow);
 
-        // Channel selection
+        pyramidSection = SectionBuilder.createSection(
+                resources.getString("raw.section.pyramidOptions"), false, pyramidGrid);
+
+        // --- Section 3: Channel Selection ---
         var channelLabel = new Label(resources.getString("raw.label.channels"));
         channelListView = new ListView<>();
         channelListView.setPrefHeight(120);
@@ -174,8 +184,11 @@ public class RawConfigPane extends VBox {
         channelBox = new VBox(5, channelLabel, channelListView);
         VBox.setVgrow(channelListView, Priority.ALWAYS);
 
-        getChildren().addAll(header, grid, channelBox);
-        VBox.setVgrow(channelBox, Priority.ALWAYS);
+        channelSection = SectionBuilder.createSection(
+                resources.getString("raw.section.channelSelection"), true, channelBox);
+
+        getChildren().addAll(header, imageSettingsSection, pyramidSection, channelSection);
+        VBox.setVgrow(channelSection, Priority.ALWAYS);
 
         // Dynamic visibility
         regionTypeCombo.valueProperty().addListener((obs, old, newType) -> updateVisibility());
@@ -194,18 +207,8 @@ public class RawConfigPane extends VBox {
         paddingSpinner.setManaged(isAnnotation);
 
         boolean isPyramid = formatCombo.getValue() == OutputFormat.OME_TIFF_PYRAMID;
-        pyramidLevelsLabel.setVisible(isPyramid);
-        pyramidLevelsLabel.setManaged(isPyramid);
-        pyramidLevelsSpinner.setVisible(isPyramid);
-        pyramidLevelsSpinner.setManaged(isPyramid);
-        compressionLabel.setVisible(isPyramid);
-        compressionLabel.setManaged(isPyramid);
-        compressionCombo.setVisible(isPyramid);
-        compressionCombo.setManaged(isPyramid);
-        tileSizeLabel.setVisible(isPyramid);
-        tileSizeLabel.setManaged(isPyramid);
-        tileSizeSpinner.setVisible(isPyramid);
-        tileSizeSpinner.setManaged(isPyramid);
+        pyramidSection.setVisible(isPyramid);
+        pyramidSection.setManaged(isPyramid);
     }
 
     private void wireTooltips() {
@@ -234,16 +237,16 @@ public class RawConfigPane extends VBox {
     public void populateChannels(List<String> channelNames) {
         channelListView.getItems().clear();
         if (channelNames == null || channelNames.isEmpty()) {
-            channelBox.setVisible(false);
-            channelBox.setManaged(false);
+            channelSection.setVisible(false);
+            channelSection.setManaged(false);
             channelsPopulated = false;
             return;
         }
         for (int i = 0; i < channelNames.size(); i++) {
             channelListView.getItems().add(new ChannelItem(i, channelNames.get(i), true));
         }
-        channelBox.setVisible(true);
-        channelBox.setManaged(true);
+        channelSection.setVisible(true);
+        channelSection.setManaged(true);
         channelsPopulated = true;
     }
 

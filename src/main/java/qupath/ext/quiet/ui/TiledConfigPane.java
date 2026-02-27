@@ -15,6 +15,7 @@ import javafx.scene.control.Label;
 import javafx.scene.control.ListView;
 import javafx.scene.control.Spinner;
 import javafx.scene.control.SpinnerValueFactory;
+import javafx.scene.control.TitledPane;
 import javafx.scene.control.Tooltip;
 import javafx.scene.control.cell.CheckBoxListCell;
 import javafx.scene.layout.GridPane;
@@ -266,8 +267,14 @@ public class TiledConfigPane extends VBox {
             classBox.setManaged(needsClasses);
         });
 
-        getChildren().addAll(header, tileGrid, labelSection);
-        VBox.setVgrow(labelSection, Priority.ALWAYS);
+        // -- Wrap sections in collapsible TitledPanes --
+        var tileGridSection = SectionBuilder.createSection(
+                resources.getString("tiled.section.tileGrid"), true, tileGrid);
+        var labelMasksSection = SectionBuilder.createSection(
+                resources.getString("tiled.section.labelMasks"), false, labelSection);
+
+        getChildren().addAll(header, tileGridSection, labelMasksSection);
+        VBox.setVgrow(labelMasksSection, Priority.ALWAYS);
         wireTooltips();
     }
 

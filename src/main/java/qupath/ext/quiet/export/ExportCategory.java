@@ -10,7 +10,8 @@ public enum ExportCategory {
     RENDERED("Rendered Image", "rendered"),
     MASK("Label / Mask", "masks"),
     RAW("Raw Image Data", "raw"),
-    TILED("Tiled Export (ML)", "tiles");
+    TILED("Tiled Export (ML)", "tiles"),
+    OBJECT_CROPS("Object Crops (Classification)", "crops");
 
     private final String displayName;
     private final String defaultSubdirectory;

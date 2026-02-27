@@ -102,32 +102,41 @@ public class ExportMetadataWriter {
 
     /**
      * Write an {@code export_info.txt} sidecar describing channels, display
-     * settings, and pixel size for rendered, raw, or tiled exports.
+     * settings, and pixel size for rendered, raw, tiled, or object crop exports.
      *
-     * @param channelGroups image groups with the same channel signature
-     * @param downsample    the export downsample factor
-     * @param category      the export category
-     * @param renderedConfig rendered config (null for non-rendered exports)
-     * @param tiledConfig   tiled config (null for non-tiled exports)
-     * @param outputDir     the export output directory
+     * @param channelGroups     image groups with the same channel signature
+     * @param downsample        the export downsample factor
+     * @param category          the export category
+     * @param renderedConfig    rendered config (null for non-rendered exports)
+     * @param tiledConfig       tiled config (null for non-tiled exports)
+     * @param outputDir         the export output directory
+     * @param channelsConsistent true if all images have the same channel configuration
      */
     public static void writeExportInfo(List<ChannelGroup> channelGroups,
                                         double downsample,
                                         ExportCategory category,
                                         RenderedExportConfig renderedConfig,
                                         TiledExportConfig tiledConfig,
-                                        File outputDir) {
+                                        File outputDir,
+                                        boolean channelsConsistent) {
         File file = new File(outputDir, "export_info.txt");
         try (var pw = new PrintWriter(file, StandardCharsets.UTF_8)) {
             pw.println("Export Info");
             pw.println("===========");
             pw.println();
+
+            if (!channelsConsistent) {
+                pw.println("WARNING: Channel names/order are not consistent across exported images.");
+                pw.println("Color legend and unified channel info may not be accurate.");
+                pw.println();
+            }
+
             pw.println("Export Category: " + category.getDisplayName());
             pw.println("Downsample: " + formatDouble(downsample) + "x");
             pw.println();
 
             for (var group : channelGroups) {
-                writeChannelGroup(pw, group, renderedConfig);
+                writeChannelGroup(pw, group, renderedConfig, channelsConsistent);
             }
 
             // Tiled export parameters
@@ -211,7 +220,8 @@ public class ExportMetadataWriter {
     // ------------------------------------------------------------------
 
     private static void writeChannelGroup(PrintWriter pw, ChannelGroup group,
-                                           RenderedExportConfig renderedConfig) {
+                                           RenderedExportConfig renderedConfig,
+                                           boolean channelsConsistent) {
         int count = group.filenames().size();
         pw.println("Image Group (" + count + " image" + (count != 1 ? "s" : "") + "):");
 
@@ -227,13 +237,20 @@ public class ExportMetadataWriter {
         pw.println("  Image Type: " + group.imageType());
         pw.println();
 
-        // Channels
+        // Channels -- always write per-group info (useful for debugging inconsistencies)
         if (group.imageType() == ImageData.ImageType.BRIGHTFIELD_H_E
                 || group.imageType() == ImageData.ImageType.BRIGHTFIELD_H_DAB
                 || group.imageType() == ImageData.ImageType.BRIGHTFIELD_OTHER) {
             writeBrightfieldInfo(pw, group);
-        } else {
+        } else if (channelsConsistent) {
+            // Only write the full color legend when channels are consistent
             writeChannelList(pw, group);
+        } else {
+            // Just list channel names without color info
+            pw.println("  Channels: " + group.channels().stream()
+                    .map(ch -> ch.getName())
+                    .reduce((a, b) -> a + ", " + b)
+                    .orElse("(none)"));
         }
 
         // Display settings for rendered exports

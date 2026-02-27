@@ -36,6 +36,7 @@ public class BatchExportTask extends Task<ExportResult> {
     private final MaskExportConfig maskConfig;
     private final RawExportConfig rawConfig;
     private final TiledExportConfig tiledConfig;
+    private final ObjectCropConfig objectCropConfig;
     private final PixelClassifier classifier;
     private final DensityMapBuilder densityBuilder;
     private final String workflowScript;
@@ -43,6 +44,7 @@ public class BatchExportTask extends Task<ExportResult> {
     private final File outputDirectory;
     private final String filenamePrefix;
     private final String filenameSuffix;
+    private final boolean channelsConsistent;
 
     /**
      * Create a batch export task for rendered exports.
@@ -54,10 +56,12 @@ public class BatchExportTask extends Task<ExportResult> {
                                               String workflowScript,
                                               boolean exportGeoJson,
                                               String filenamePrefix,
-                                              String filenameSuffix) {
+                                              String filenameSuffix,
+                                              boolean channelsConsistent) {
         return new BatchExportTask(entries, ExportCategory.RENDERED,
-                config, null, null, null, classifier, densityBuilder, workflowScript,
-                exportGeoJson, config.getOutputDirectory(), filenamePrefix, filenameSuffix);
+                config, null, null, null, null, classifier, densityBuilder, workflowScript,
+                exportGeoJson, config.getOutputDirectory(), filenamePrefix, filenameSuffix,
+                channelsConsistent);
     }
 
     /**
@@ -70,8 +74,8 @@ public class BatchExportTask extends Task<ExportResult> {
                                           String filenamePrefix,
                                           String filenameSuffix) {
         return new BatchExportTask(entries, ExportCategory.MASK,
-                null, config, null, null, null, null, workflowScript,
-                exportGeoJson, config.getOutputDirectory(), filenamePrefix, filenameSuffix);
+                null, config, null, null, null, null, null, workflowScript,
+                exportGeoJson, config.getOutputDirectory(), filenamePrefix, filenameSuffix, true);
     }
 
     /**
@@ -82,10 +86,12 @@ public class BatchExportTask extends Task<ExportResult> {
                                          String workflowScript,
                                          boolean exportGeoJson,
                                          String filenamePrefix,
-                                         String filenameSuffix) {
+                                         String filenameSuffix,
+                                         boolean channelsConsistent) {
         return new BatchExportTask(entries, ExportCategory.RAW,
-                null, null, config, null, null, null, workflowScript,
-                exportGeoJson, config.getOutputDirectory(), filenamePrefix, filenameSuffix);
+                null, null, config, null, null, null, null, workflowScript,
+                exportGeoJson, config.getOutputDirectory(), filenamePrefix, filenameSuffix,
+                channelsConsistent);
     }
 
     /**
@@ -98,8 +104,24 @@ public class BatchExportTask extends Task<ExportResult> {
                                            String filenamePrefix,
                                            String filenameSuffix) {
         return new BatchExportTask(entries, ExportCategory.TILED,
-                null, null, null, config, null, null, workflowScript,
-                exportGeoJson, config.getOutputDirectory(), filenamePrefix, filenameSuffix);
+                null, null, null, config, null, null, null, workflowScript,
+                exportGeoJson, config.getOutputDirectory(), filenamePrefix, filenameSuffix, true);
+    }
+
+    /**
+     * Create a batch export task for object crop exports.
+     */
+    public static BatchExportTask forObjectCrops(List<ProjectImageEntry<BufferedImage>> entries,
+                                                  ObjectCropConfig config,
+                                                  String workflowScript,
+                                                  boolean exportGeoJson,
+                                                  String filenamePrefix,
+                                                  String filenameSuffix,
+                                                  boolean channelsConsistent) {
+        return new BatchExportTask(entries, ExportCategory.OBJECT_CROPS,
+                null, null, null, null, config, null, null, workflowScript,
+                exportGeoJson, config.getOutputDirectory(), filenamePrefix, filenameSuffix,
+                channelsConsistent);
     }
 
     private BatchExportTask(List<ProjectImageEntry<BufferedImage>> entries,
@@ -108,19 +130,22 @@ public class BatchExportTask extends Task<ExportResult> {
                             MaskExportConfig maskConfig,
                             RawExportConfig rawConfig,
                             TiledExportConfig tiledConfig,
+                            ObjectCropConfig objectCropConfig,
                             PixelClassifier classifier,
                             DensityMapBuilder densityBuilder,
                             String workflowScript,
                             boolean exportGeoJson,
                             File outputDirectory,
                             String filenamePrefix,
-                            String filenameSuffix) {
+                            String filenameSuffix,
+                            boolean channelsConsistent) {
         this.entries = List.copyOf(entries);
         this.category = category;
         this.renderedConfig = renderedConfig;
         this.maskConfig = maskConfig;
         this.rawConfig = rawConfig;
         this.tiledConfig = tiledConfig;
+        this.objectCropConfig = objectCropConfig;
         this.classifier = classifier;
         this.densityBuilder = densityBuilder;
         this.workflowScript = workflowScript;
@@ -128,6 +153,7 @@ public class BatchExportTask extends Task<ExportResult> {
         this.outputDirectory = outputDirectory;
         this.filenamePrefix = filenamePrefix != null ? filenamePrefix : "";
         this.filenameSuffix = filenameSuffix != null ? filenameSuffix : "";
+        this.channelsConsistent = channelsConsistent;
     }
 
     @Override
@@ -164,6 +190,8 @@ public class BatchExportTask extends Task<ExportResult> {
                     case MASK -> MaskImageExporter.exportMask(imageData, maskConfig, entryName);
                     case RAW -> RawImageExporter.exportRaw(imageData, rawConfig, entryName);
                     case TILED -> TiledImageExporter.exportTiled(imageData, tiledConfig, entryName);
+                    case OBJECT_CROPS -> ObjectCropExporter.exportObjectCrops(
+                            imageData, objectCropConfig, entryName);
                 }
 
                 // GeoJSON export (orthogonal to image export)
@@ -247,8 +275,9 @@ public class BatchExportTask extends Task<ExportResult> {
 
     /**
      * Compute a signature string for an image's channel configuration.
+     * Used for channel consistency validation across images.
      */
-    private static String channelSignature(ImageServer<?> server) {
+    public static String channelSignature(ImageServer<?> server) {
         var channels = server.getMetadata().getChannels();
         var sb = new StringBuilder();
         for (var ch : channels) {
@@ -279,6 +308,7 @@ public class BatchExportTask extends Task<ExportResult> {
                     case MASK -> maskConfig.buildOutputFilename(entryName);
                     case RAW -> rawConfig.buildOutputFilename(entryName);
                     case TILED -> tiledConfig.buildOutputFilename(entryName);
+                    case OBJECT_CROPS -> objectCropConfig.buildOutputFilename(entryName);
                 };
                 filenames.add(exportedName);
                 groups.put(sig, new ExportMetadataWriter.ChannelGroup(
@@ -289,6 +319,7 @@ public class BatchExportTask extends Task<ExportResult> {
                     case MASK -> maskConfig.buildOutputFilename(entryName);
                     case RAW -> rawConfig.buildOutputFilename(entryName);
                     case TILED -> tiledConfig.buildOutputFilename(entryName);
+                    case OBJECT_CROPS -> objectCropConfig.buildOutputFilename(entryName);
                 };
                 group.filenames().add(exportedName);
             }
@@ -310,15 +341,23 @@ public class BatchExportTask extends Task<ExportResult> {
                 case RENDERED -> ExportMetadataWriter.writeExportInfo(
                         List.copyOf(channelGroups.values()),
                         renderedConfig.getDownsample(), category,
-                        renderedConfig, null, outputDirectory);
+                        renderedConfig, null, outputDirectory,
+                        channelsConsistent);
                 case RAW -> ExportMetadataWriter.writeExportInfo(
                         List.copyOf(channelGroups.values()),
                         rawConfig.getDownsample(), category,
-                        null, null, outputDirectory);
+                        null, null, outputDirectory,
+                        channelsConsistent);
                 case TILED -> ExportMetadataWriter.writeExportInfo(
                         List.copyOf(channelGroups.values()),
                         tiledConfig.getDownsample(), category,
-                        null, tiledConfig, outputDirectory);
+                        null, tiledConfig, outputDirectory,
+                        channelsConsistent);
+                case OBJECT_CROPS -> ExportMetadataWriter.writeExportInfo(
+                        List.copyOf(channelGroups.values()),
+                        objectCropConfig.getDownsample(), category,
+                        null, null, outputDirectory,
+                        channelsConsistent);
             }
         } catch (Exception e) {
             logger.warn("Failed to write metadata sidecar file: {}", e.getMessage());
@@ -331,6 +370,7 @@ public class BatchExportTask extends Task<ExportResult> {
             case MASK -> maskConfig != null && maskConfig.isAddToWorkflow();
             case RAW -> rawConfig != null && rawConfig.isAddToWorkflow();
             case TILED -> tiledConfig != null && tiledConfig.isAddToWorkflow();
+            case OBJECT_CROPS -> objectCropConfig != null && objectCropConfig.isAddToWorkflow();
         };
     }
 
@@ -346,6 +386,7 @@ public class BatchExportTask extends Task<ExportResult> {
                 case MASK -> "Mask Export";
                 case RAW -> "Raw Image Export";
                 case TILED -> "Tiled Export";
+                case OBJECT_CROPS -> "Object Crop Export";
             };
             imageData.getHistoryWorkflow().addStep(
                     new DefaultScriptableWorkflowStep(stepName, workflowScript));

@@ -38,6 +38,7 @@ public class CategorySelectionPane extends VBox {
     private VBox maskCard;
     private VBox rawCard;
     private VBox tiledCard;
+    private VBox objectCropsCard;
 
     public CategorySelectionPane() {
         setSpacing(15);
@@ -67,11 +68,17 @@ public class CategorySelectionPane extends VBox {
                 resources.getString("category.tiled.description"),
                 ExportCategory.TILED);
 
-        var cardsBox = new HBox(15, renderedCard, maskCard, rawCard, tiledCard);
+        objectCropsCard = createCard(
+                resources.getString("category.objectCrops.title"),
+                resources.getString("category.objectCrops.description"),
+                ExportCategory.OBJECT_CROPS);
+
+        var cardsBox = new HBox(15, renderedCard, maskCard, rawCard, tiledCard, objectCropsCard);
         HBox.setHgrow(renderedCard, Priority.ALWAYS);
         HBox.setHgrow(maskCard, Priority.ALWAYS);
         HBox.setHgrow(rawCard, Priority.ALWAYS);
         HBox.setHgrow(tiledCard, Priority.ALWAYS);
+        HBox.setHgrow(objectCropsCard, Priority.ALWAYS);
 
         getChildren().addAll(header, cardsBox);
         VBox.setVgrow(cardsBox, Priority.ALWAYS);
@@ -112,6 +119,8 @@ public class CategorySelectionPane extends VBox {
         rawCard.setStyle(selectedCategory == ExportCategory.RAW
                 ? CARD_STYLE_SELECTED : CARD_STYLE_DEFAULT);
         tiledCard.setStyle(selectedCategory == ExportCategory.TILED
+                ? CARD_STYLE_SELECTED : CARD_STYLE_DEFAULT);
+        objectCropsCard.setStyle(selectedCategory == ExportCategory.OBJECT_CROPS
                 ? CARD_STYLE_SELECTED : CARD_STYLE_DEFAULT);
     }
 
