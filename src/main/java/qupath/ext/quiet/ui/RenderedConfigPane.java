@@ -149,26 +149,6 @@ public class RenderedConfigPane extends VBox {
     private Label infoLabelFontSizeLabel;
     private CheckBox infoLabelBoldCheck;
 
-    // Inset/zoom controls
-    private CheckBox showInsetCheck;
-    private Spinner<Double> insetSourceXSpinner;
-    private Label insetSourceXLabel;
-    private Spinner<Double> insetSourceYSpinner;
-    private Label insetSourceYLabel;
-    private Spinner<Double> insetSourceWSpinner;
-    private Label insetSourceWLabel;
-    private Spinner<Double> insetSourceHSpinner;
-    private Label insetSourceHLabel;
-    private Spinner<Integer> insetMagnificationSpinner;
-    private Label insetMagnificationLabel;
-    private ComboBox<ScaleBarRenderer.Position> insetPositionCombo;
-    private Label insetPositionLabel;
-    private ColorPicker insetFrameColorPicker;
-    private Label insetFrameColorLabel;
-    private Spinner<Integer> insetFrameWidthSpinner;
-    private Label insetFrameWidthLabel;
-    private CheckBox insetConnectingLinesCheck;
-
     // Format info label
     private Label formatInfoLabel;
 
@@ -206,9 +186,7 @@ public class RenderedConfigPane extends VBox {
         var splitChannelSection = buildSplitChannelSection();
         var scaleBarSection = buildScaleBarSection();
         colorScaleBarSection = buildColorScaleBarSection();
-        var panelLabelSection = buildPanelLabelSection();
         var infoLabelSection = buildInfoLabelSection();
-        var insetSection = buildInsetSection();
 
         previewButton = new Button(resources.getString("rendered.label.previewImage"));
         previewButton.setOnAction(e -> handlePreview());
@@ -216,8 +194,8 @@ public class RenderedConfigPane extends VBox {
 
         getChildren().addAll(header, imageSettingsSection, overlaySourceSection,
                 objectOverlaysSection, splitChannelSection, scaleBarSection,
-                colorScaleBarSection, panelLabelSection, infoLabelSection,
-                insetSection, previewButton);
+                colorScaleBarSection, infoLabelSection,
+                previewButton);
 
         // Scale bar visibility toggling + SVG auto-default
         showScaleBarCheck.selectedProperty().addListener(
@@ -250,11 +228,6 @@ public class RenderedConfigPane extends VBox {
                     updateInfoLabelVisibility(newVal);
                 });
         updateInfoLabelVisibility(false);
-
-        // Inset visibility toggling
-        showInsetCheck.selectedProperty().addListener(
-                (obs, oldVal, newVal) -> updateInsetVisibility(newVal));
-        updateInsetVisibility(false);
 
         // DPI/downsample mode toggling
         resolutionModeCombo.valueProperty().addListener(
@@ -747,80 +720,7 @@ public class RenderedConfigPane extends VBox {
                 resources.getString("rendered.section.colorScaleBar"), false, grid);
     }
 
-    private TitledPane buildPanelLabelSection() {
-        var grid = new GridPane();
-        grid.setHgap(10);
-        grid.setVgap(10);
-        int row = 0;
-
-        showPanelLabelCheck = new CheckBox(resources.getString("rendered.label.showPanelLabel"));
-        grid.add(showPanelLabelCheck, 0, row, 2, 1);
-        row++;
-
-        panelLabelTextLabel = new Label(resources.getString("rendered.label.panelLabelText"));
-        grid.add(panelLabelTextLabel, 0, row);
-        panelLabelTextField = new TextField();
-        panelLabelTextField.setPromptText("Auto (A, B, C...)");
-        grid.add(panelLabelTextField, 1, row);
-        row++;
-
-        panelLabelPositionLabel = new Label(resources.getString("rendered.label.panelLabelPosition"));
-        grid.add(panelLabelPositionLabel, 0, row);
-        panelLabelPositionCombo = new ComboBox<>(FXCollections.observableArrayList(
-                ScaleBarRenderer.Position.values()));
-        panelLabelPositionCombo.setValue(ScaleBarRenderer.Position.UPPER_LEFT);
-        panelLabelPositionCombo.setConverter(new StringConverter<>() {
-            @Override
-            public String toString(ScaleBarRenderer.Position pos) {
-                if (pos == null) return "";
-                return switch (pos) {
-                    case LOWER_RIGHT -> resources.getString("rendered.scaleBar.lowerRight");
-                    case LOWER_LEFT -> resources.getString("rendered.scaleBar.lowerLeft");
-                    case UPPER_RIGHT -> resources.getString("rendered.scaleBar.upperRight");
-                    case UPPER_LEFT -> resources.getString("rendered.scaleBar.upperLeft");
-                };
-            }
-            @Override
-            public ScaleBarRenderer.Position fromString(String s) {
-                return ScaleBarRenderer.Position.UPPER_LEFT;
-            }
-        });
-        grid.add(panelLabelPositionCombo, 1, row);
-        row++;
-
-        panelLabelFontSizeLabel = new Label(resources.getString("rendered.label.panelLabelFontSize"));
-        grid.add(panelLabelFontSizeLabel, 0, row);
-        var plFontSizeFactory = new SpinnerValueFactory.IntegerSpinnerValueFactory(0, 72, 0);
-        plFontSizeFactory.setConverter(new StringConverter<>() {
-            @Override
-            public String toString(Integer value) {
-                if (value == null || value == 0)
-                    return resources.getString("rendered.scaleBar.fontSizeAuto");
-                return String.valueOf(value);
-            }
-            @Override
-            public Integer fromString(String string) {
-                if (string == null || string.isBlank()
-                        || string.equalsIgnoreCase(resources.getString("rendered.scaleBar.fontSizeAuto"))) {
-                    return 0;
-                }
-                try { return Integer.parseInt(string); }
-                catch (NumberFormatException e) { return 0; }
-            }
-        });
-        panelLabelFontSizeSpinner = new Spinner<>(plFontSizeFactory);
-        panelLabelFontSizeSpinner.setEditable(true);
-        grid.add(panelLabelFontSizeSpinner, 1, row);
-        row++;
-
-        panelLabelBoldCheck = new CheckBox(resources.getString("rendered.label.panelLabelBold"));
-        panelLabelBoldCheck.setSelected(true);
-        grid.add(panelLabelBoldCheck, 0, row, 2, 1);
-        row++;
-
-        return SectionBuilder.createSection(
-                resources.getString("rendered.section.panelLabel"), false, grid);
-    }
+    // Panel label controls are now part of buildSplitChannelSection()
 
     private TitledPane buildInfoLabelSection() {
         var grid = new GridPane();
@@ -896,122 +796,6 @@ public class RenderedConfigPane extends VBox {
                 resources.getString("rendered.section.infoLabel"), false, grid);
     }
 
-    private TitledPane buildInsetSection() {
-        var grid = new GridPane();
-        grid.setHgap(10);
-        grid.setVgap(10);
-        int row = 0;
-
-        showInsetCheck = new CheckBox(resources.getString("rendered.label.showInset"));
-        grid.add(showInsetCheck, 0, row, 2, 1);
-        row++;
-
-        insetSourceXLabel = new Label(resources.getString("rendered.label.insetSourceX"));
-        grid.add(insetSourceXLabel, 0, row);
-        insetSourceXSpinner = new Spinner<>(
-                new SpinnerValueFactory.DoubleSpinnerValueFactory(0.0, 1.0, 0.4, 0.05));
-        insetSourceXSpinner.setEditable(true);
-        insetSourceXSpinner.setPrefWidth(100);
-        grid.add(insetSourceXSpinner, 1, row);
-        row++;
-
-        insetSourceYLabel = new Label(resources.getString("rendered.label.insetSourceY"));
-        grid.add(insetSourceYLabel, 0, row);
-        insetSourceYSpinner = new Spinner<>(
-                new SpinnerValueFactory.DoubleSpinnerValueFactory(0.0, 1.0, 0.4, 0.05));
-        insetSourceYSpinner.setEditable(true);
-        insetSourceYSpinner.setPrefWidth(100);
-        grid.add(insetSourceYSpinner, 1, row);
-        row++;
-
-        insetSourceWLabel = new Label(resources.getString("rendered.label.insetSourceW"));
-        grid.add(insetSourceWLabel, 0, row);
-        insetSourceWSpinner = new Spinner<>(
-                new SpinnerValueFactory.DoubleSpinnerValueFactory(0.01, 1.0, 0.15, 0.05));
-        insetSourceWSpinner.setEditable(true);
-        insetSourceWSpinner.setPrefWidth(100);
-        grid.add(insetSourceWSpinner, 1, row);
-        row++;
-
-        insetSourceHLabel = new Label(resources.getString("rendered.label.insetSourceH"));
-        grid.add(insetSourceHLabel, 0, row);
-        insetSourceHSpinner = new Spinner<>(
-                new SpinnerValueFactory.DoubleSpinnerValueFactory(0.01, 1.0, 0.15, 0.05));
-        insetSourceHSpinner.setEditable(true);
-        insetSourceHSpinner.setPrefWidth(100);
-        grid.add(insetSourceHSpinner, 1, row);
-        row++;
-
-        insetMagnificationLabel = new Label(resources.getString("rendered.label.insetMagnification"));
-        grid.add(insetMagnificationLabel, 0, row);
-        insetMagnificationSpinner = new Spinner<>(
-                new SpinnerValueFactory.IntegerSpinnerValueFactory(2, 16, 4));
-        insetMagnificationSpinner.setEditable(true);
-        insetMagnificationSpinner.setPrefWidth(100);
-        grid.add(insetMagnificationSpinner, 1, row);
-        row++;
-
-        insetPositionLabel = new Label(resources.getString("rendered.label.insetPosition"));
-        grid.add(insetPositionLabel, 0, row);
-        insetPositionCombo = new ComboBox<>(FXCollections.observableArrayList(
-                ScaleBarRenderer.Position.values()));
-        insetPositionCombo.setValue(ScaleBarRenderer.Position.UPPER_RIGHT);
-        insetPositionCombo.setConverter(new StringConverter<>() {
-            @Override
-            public String toString(ScaleBarRenderer.Position pos) {
-                if (pos == null) return "";
-                return switch (pos) {
-                    case LOWER_RIGHT -> resources.getString("rendered.scaleBar.lowerRight");
-                    case LOWER_LEFT -> resources.getString("rendered.scaleBar.lowerLeft");
-                    case UPPER_RIGHT -> resources.getString("rendered.scaleBar.upperRight");
-                    case UPPER_LEFT -> resources.getString("rendered.scaleBar.upperLeft");
-                };
-            }
-            @Override
-            public ScaleBarRenderer.Position fromString(String s) {
-                return ScaleBarRenderer.Position.UPPER_RIGHT;
-            }
-        });
-        grid.add(insetPositionCombo, 1, row);
-        row++;
-
-        insetFrameColorLabel = new Label(resources.getString("rendered.label.insetFrameColor"));
-        grid.add(insetFrameColorLabel, 0, row);
-        insetFrameColorPicker = new ColorPicker(javafx.scene.paint.Color.YELLOW);
-        grid.add(insetFrameColorPicker, 1, row);
-        row++;
-
-        insetFrameWidthLabel = new Label(resources.getString("rendered.label.insetFrameWidth"));
-        grid.add(insetFrameWidthLabel, 0, row);
-        var fwFactory = new SpinnerValueFactory.IntegerSpinnerValueFactory(0, 20, 0);
-        fwFactory.setConverter(new StringConverter<>() {
-            @Override
-            public String toString(Integer value) {
-                if (value == null || value == 0) return "Auto";
-                return String.valueOf(value);
-            }
-            @Override
-            public Integer fromString(String string) {
-                if (string == null || string.isBlank() || "Auto".equalsIgnoreCase(string)) return 0;
-                try { return Integer.parseInt(string); }
-                catch (NumberFormatException e) { return 0; }
-            }
-        });
-        insetFrameWidthSpinner = new Spinner<>(fwFactory);
-        insetFrameWidthSpinner.setEditable(true);
-        insetFrameWidthSpinner.setPrefWidth(100);
-        grid.add(insetFrameWidthSpinner, 1, row);
-        row++;
-
-        insetConnectingLinesCheck = new CheckBox(resources.getString("rendered.label.insetConnectingLines"));
-        insetConnectingLinesCheck.setSelected(true);
-        grid.add(insetConnectingLinesCheck, 0, row, 2, 1);
-        row++;
-
-        return SectionBuilder.createSection(
-                resources.getString("rendered.section.insetZoom"), false, grid);
-    }
-
     private TitledPane buildSplitChannelSection() {
         var grid = new GridPane();
         grid.setHgap(10);
@@ -1046,6 +830,72 @@ public class RenderedConfigPane extends VBox {
         grid.add(splitChannelNoteLabel, 0, row, 2, 1);
         row++;
 
+        // Panel label (A, B, C...) for split-channel panels
+        showPanelLabelCheck = new CheckBox(resources.getString("rendered.label.showPanelLabel"));
+        grid.add(showPanelLabelCheck, 0, row, 2, 1);
+        row++;
+
+        panelLabelTextLabel = new Label(resources.getString("rendered.label.panelLabelText"));
+        grid.add(panelLabelTextLabel, 0, row);
+        panelLabelTextField = new TextField();
+        panelLabelTextField.setPromptText("Auto (A, B, C...)");
+        grid.add(panelLabelTextField, 1, row);
+        row++;
+
+        panelLabelPositionLabel = new Label(resources.getString("rendered.label.panelLabelPosition"));
+        grid.add(panelLabelPositionLabel, 0, row);
+        panelLabelPositionCombo = new ComboBox<>(FXCollections.observableArrayList(
+                ScaleBarRenderer.Position.values()));
+        panelLabelPositionCombo.setValue(ScaleBarRenderer.Position.UPPER_LEFT);
+        panelLabelPositionCombo.setConverter(new StringConverter<>() {
+            @Override
+            public String toString(ScaleBarRenderer.Position pos) {
+                if (pos == null) return "";
+                return switch (pos) {
+                    case LOWER_RIGHT -> resources.getString("rendered.scaleBar.lowerRight");
+                    case LOWER_LEFT -> resources.getString("rendered.scaleBar.lowerLeft");
+                    case UPPER_RIGHT -> resources.getString("rendered.scaleBar.upperRight");
+                    case UPPER_LEFT -> resources.getString("rendered.scaleBar.upperLeft");
+                };
+            }
+            @Override
+            public ScaleBarRenderer.Position fromString(String s) {
+                return ScaleBarRenderer.Position.UPPER_LEFT;
+            }
+        });
+        grid.add(panelLabelPositionCombo, 1, row);
+        row++;
+
+        panelLabelFontSizeLabel = new Label(resources.getString("rendered.label.panelLabelFontSize"));
+        grid.add(panelLabelFontSizeLabel, 0, row);
+        var plFontSizeFactory = new SpinnerValueFactory.IntegerSpinnerValueFactory(0, 72, 0);
+        plFontSizeFactory.setConverter(new StringConverter<>() {
+            @Override
+            public String toString(Integer value) {
+                if (value == null || value == 0)
+                    return resources.getString("rendered.scaleBar.fontSizeAuto");
+                return String.valueOf(value);
+            }
+            @Override
+            public Integer fromString(String string) {
+                if (string == null || string.isBlank()
+                        || string.equalsIgnoreCase(resources.getString("rendered.scaleBar.fontSizeAuto"))) {
+                    return 0;
+                }
+                try { return Integer.parseInt(string); }
+                catch (NumberFormatException e) { return 0; }
+            }
+        });
+        panelLabelFontSizeSpinner = new Spinner<>(plFontSizeFactory);
+        panelLabelFontSizeSpinner.setEditable(true);
+        grid.add(panelLabelFontSizeSpinner, 1, row);
+        row++;
+
+        panelLabelBoldCheck = new CheckBox(resources.getString("rendered.label.panelLabelBold"));
+        panelLabelBoldCheck.setSelected(true);
+        grid.add(panelLabelBoldCheck, 0, row, 2, 1);
+        row++;
+
         return SectionBuilder.createSection(
                 resources.getString("rendered.section.splitChannel"), false, grid);
     }
@@ -1059,6 +909,14 @@ public class RenderedConfigPane extends VBox {
         channelColorLegendCheck.setManaged(splitEnabled);
         splitChannelNoteLabel.setVisible(splitEnabled);
         splitChannelNoteLabel.setManaged(splitEnabled);
+        // Panel label only relevant when split channels is enabled
+        showPanelLabelCheck.setVisible(splitEnabled);
+        showPanelLabelCheck.setManaged(splitEnabled);
+        if (!splitEnabled) {
+            updatePanelLabelVisibility(false);
+        } else {
+            updatePanelLabelVisibility(showPanelLabelCheck.isSelected());
+        }
     }
 
     private void updateModeVisibility(RenderedExportConfig.RenderMode mode) {
@@ -1084,6 +942,13 @@ public class RenderedConfigPane extends VBox {
         // Toggle entire overlay source section
         overlaySourceSection.setVisible(!isObjectOverlay);
         overlaySourceSection.setManaged(!isObjectOverlay);
+
+        // Deselect object overlays when switching to classifier/density map modes
+        // (the overlay is the classifier/density map itself, not objects)
+        if (isClassifier || isDensityMap) {
+            includeAnnotationsCheck.setSelected(false);
+            includeDetectionsCheck.setSelected(false);
+        }
 
         // Color scale bar section only for density map mode
         colorScaleBarSection.setVisible(isDensityMap);
@@ -1171,43 +1036,6 @@ public class RenderedConfigPane extends VBox {
         infoLabelFontSizeSpinner.setManaged(show);
         infoLabelBoldCheck.setVisible(show);
         infoLabelBoldCheck.setManaged(show);
-    }
-
-    private void updateInsetVisibility(boolean show) {
-        insetSourceXLabel.setVisible(show);
-        insetSourceXLabel.setManaged(show);
-        insetSourceXSpinner.setVisible(show);
-        insetSourceXSpinner.setManaged(show);
-        insetSourceYLabel.setVisible(show);
-        insetSourceYLabel.setManaged(show);
-        insetSourceYSpinner.setVisible(show);
-        insetSourceYSpinner.setManaged(show);
-        insetSourceWLabel.setVisible(show);
-        insetSourceWLabel.setManaged(show);
-        insetSourceWSpinner.setVisible(show);
-        insetSourceWSpinner.setManaged(show);
-        insetSourceHLabel.setVisible(show);
-        insetSourceHLabel.setManaged(show);
-        insetSourceHSpinner.setVisible(show);
-        insetSourceHSpinner.setManaged(show);
-        insetMagnificationLabel.setVisible(show);
-        insetMagnificationLabel.setManaged(show);
-        insetMagnificationSpinner.setVisible(show);
-        insetMagnificationSpinner.setManaged(show);
-        insetPositionLabel.setVisible(show);
-        insetPositionLabel.setManaged(show);
-        insetPositionCombo.setVisible(show);
-        insetPositionCombo.setManaged(show);
-        insetFrameColorLabel.setVisible(show);
-        insetFrameColorLabel.setManaged(show);
-        insetFrameColorPicker.setVisible(show);
-        insetFrameColorPicker.setManaged(show);
-        insetFrameWidthLabel.setVisible(show);
-        insetFrameWidthLabel.setManaged(show);
-        insetFrameWidthSpinner.setVisible(show);
-        insetFrameWidthSpinner.setManaged(show);
-        insetConnectingLinesCheck.setVisible(show);
-        insetConnectingLinesCheck.setManaged(show);
     }
 
     private void updateResolutionModeVisibility(String mode) {
@@ -1369,16 +1197,6 @@ public class RenderedConfigPane extends VBox {
         infoLabelPositionCombo.setTooltip(createTooltip("tooltip.rendered.infoLabelPosition"));
         infoLabelFontSizeSpinner.setTooltip(createTooltip("tooltip.rendered.infoLabelFontSize"));
         infoLabelBoldCheck.setTooltip(createTooltip("tooltip.rendered.infoLabelBold"));
-        showInsetCheck.setTooltip(createTooltip("tooltip.rendered.showInset"));
-        insetSourceXSpinner.setTooltip(createTooltip("tooltip.rendered.insetSourceX"));
-        insetSourceYSpinner.setTooltip(createTooltip("tooltip.rendered.insetSourceY"));
-        insetSourceWSpinner.setTooltip(createTooltip("tooltip.rendered.insetSourceW"));
-        insetSourceHSpinner.setTooltip(createTooltip("tooltip.rendered.insetSourceH"));
-        insetMagnificationSpinner.setTooltip(createTooltip("tooltip.rendered.insetMagnification"));
-        insetPositionCombo.setTooltip(createTooltip("tooltip.rendered.insetPosition"));
-        insetFrameColorPicker.setTooltip(createTooltip("tooltip.rendered.insetFrameColor"));
-        insetFrameWidthSpinner.setTooltip(createTooltip("tooltip.rendered.insetFrameWidth"));
-        insetConnectingLinesCheck.setTooltip(createTooltip("tooltip.rendered.insetConnectingLines"));
     }
 
     private static Tooltip createTooltip(String key) {
@@ -1565,22 +1383,6 @@ public class RenderedConfigPane extends VBox {
         infoLabelBoldCheck.setSelected(QuietPreferences.isRenderedInfoLabelBold());
         updateInfoLabelVisibility(showInfoLabelCheck.isSelected());
 
-        // Inset preferences
-        showInsetCheck.setSelected(QuietPreferences.isRenderedShowInset());
-        insetSourceXSpinner.getValueFactory().setValue(QuietPreferences.getRenderedInsetSourceX());
-        insetSourceYSpinner.getValueFactory().setValue(QuietPreferences.getRenderedInsetSourceY());
-        insetSourceWSpinner.getValueFactory().setValue(QuietPreferences.getRenderedInsetSourceW());
-        insetSourceHSpinner.getValueFactory().setValue(QuietPreferences.getRenderedInsetSourceH());
-        insetMagnificationSpinner.getValueFactory().setValue(QuietPreferences.getRenderedInsetMagnification());
-        try {
-            insetPositionCombo.setValue(
-                    ScaleBarRenderer.Position.valueOf(QuietPreferences.getRenderedInsetPosition()));
-        } catch (IllegalArgumentException e) { /* keep default */ }
-        String savedInsetColor = QuietPreferences.getRenderedInsetFrameColor();
-        insetFrameColorPicker.setValue(hexToFxColor(savedInsetColor));
-        insetFrameWidthSpinner.getValueFactory().setValue(QuietPreferences.getRenderedInsetFrameWidth());
-        insetConnectingLinesCheck.setSelected(QuietPreferences.isRenderedInsetConnectingLines());
-        updateInsetVisibility(showInsetCheck.isSelected());
     }
 
     /**
@@ -1656,24 +1458,6 @@ public class RenderedConfigPane extends VBox {
                 infoLabelFontSizeSpinner.getValue() != null ? infoLabelFontSizeSpinner.getValue() : 0);
         QuietPreferences.setRenderedInfoLabelBold(infoLabelBoldCheck.isSelected());
 
-        // Inset preferences
-        QuietPreferences.setRenderedShowInset(showInsetCheck.isSelected());
-        QuietPreferences.setRenderedInsetSourceX(
-                insetSourceXSpinner.getValue() != null ? insetSourceXSpinner.getValue() : 0.4);
-        QuietPreferences.setRenderedInsetSourceY(
-                insetSourceYSpinner.getValue() != null ? insetSourceYSpinner.getValue() : 0.4);
-        QuietPreferences.setRenderedInsetSourceW(
-                insetSourceWSpinner.getValue() != null ? insetSourceWSpinner.getValue() : 0.15);
-        QuietPreferences.setRenderedInsetSourceH(
-                insetSourceHSpinner.getValue() != null ? insetSourceHSpinner.getValue() : 0.15);
-        QuietPreferences.setRenderedInsetMagnification(
-                insetMagnificationSpinner.getValue() != null ? insetMagnificationSpinner.getValue() : 4);
-        var inPos = insetPositionCombo.getValue();
-        if (inPos != null) QuietPreferences.setRenderedInsetPosition(inPos.name());
-        QuietPreferences.setRenderedInsetFrameColor(fxColorToHex(insetFrameColorPicker.getValue()));
-        QuietPreferences.setRenderedInsetFrameWidth(
-                insetFrameWidthSpinner.getValue() != null ? insetFrameWidthSpinner.getValue() : 0);
-        QuietPreferences.setRenderedInsetConnectingLines(insetConnectingLinesCheck.isSelected());
     }
 
     /**
@@ -1765,19 +1549,7 @@ public class RenderedConfigPane extends VBox {
                         ? infoLabelFontSizeSpinner.getValue() : 0)
                 .infoLabelBold(infoLabelBoldCheck.isSelected());
 
-        // Inset/zoom options
-        builder.showInset(showInsetCheck.isSelected())
-                .insetSourceX(insetSourceXSpinner.getValue() != null ? insetSourceXSpinner.getValue() : 0.4)
-                .insetSourceY(insetSourceYSpinner.getValue() != null ? insetSourceYSpinner.getValue() : 0.4)
-                .insetSourceW(insetSourceWSpinner.getValue() != null ? insetSourceWSpinner.getValue() : 0.15)
-                .insetSourceH(insetSourceHSpinner.getValue() != null ? insetSourceHSpinner.getValue() : 0.15)
-                .insetMagnification(insetMagnificationSpinner.getValue() != null ? insetMagnificationSpinner.getValue() : 4)
-                .insetPosition(insetPositionCombo.getValue() != null
-                        ? insetPositionCombo.getValue()
-                        : ScaleBarRenderer.Position.UPPER_RIGHT)
-                .insetFrameColorHex(fxColorToHex(insetFrameColorPicker.getValue()))
-                .insetFrameWidth(insetFrameWidthSpinner.getValue() != null ? insetFrameWidthSpinner.getValue() : 0)
-                .insetConnectingLines(insetConnectingLinesCheck.isSelected());
+        // Inset/zoom not exposed in UI (defaults to off)
 
         if (modeCombo.getValue() == RenderedExportConfig.RenderMode.CLASSIFIER_OVERLAY) {
             builder.classifierName(classifierCombo.getValue());
