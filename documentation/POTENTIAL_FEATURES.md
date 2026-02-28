@@ -8,22 +8,24 @@ This document catalogs features found in two Fiji figure-creation plugins --
 that QuIET does not currently offer. Each entry includes a description, an
 implementation sketch against the current QuIET codebase, and known challenges.
 
-**Current QuIET capabilities** (v0.5.0): Rendered exports (classifier overlay,
+**Current QuIET capabilities** (v0.6.0): Rendered exports (classifier overlay,
 object overlay, density map overlay), mask exports (binary, grayscale, colored,
 instance, multi-channel), raw pixel exports, tiled ML training exports,
+per-object classification crop exports, SVG vector export,
 per-annotation region export, panel labels (A, B, C), visual LUT selector,
 scale bars (full color picker), color scale bars, display settings control,
 script generation, batch processing, metadata sidecars, GeoJSON export,
-and a three-step wizard UI with scrollable config panes.
+and a three-step wizard UI with collapsible section-based config panes.
 
-**Codebase metrics** (v0.5.0):
-- 34 Java source files across `export/` (22 files), `ui/` (7 files), `preferences/` (1 file), root (1 file)
+**Codebase metrics** (v0.6.0):
+- ~40 Java source files across `export/` (25 files), `ui/` (9 files), `scripting/` (6 files), `preferences/` (1 file), root (1 file)
 - `RenderedExportConfig` has 31 fields, 31 builder methods
-- `RenderedConfigPane` is ~1050 lines with ~38 UI controls
+- `RenderedConfigPane` uses collapsible TitledPane sections (6 sections: Image Settings, Overlay Source, Object Overlays, Scale Bar, Color Scale Bar, Panel Label)
 - `RenderedScriptGenerator` is ~1050 lines generating 3 script variants with panel label support
-- Zero external dependencies beyond QuPath (no Batik, no Gson -- Gson comes from QuPath)
-- 14 test classes in the test suite
+- One external dependency beyond QuPath: JFreeSVG 5.0.6 for SVG export (Gson comes from QuPath)
+- 14+ test classes in the test suite
 - Shared `TextRenderUtils` eliminates text rendering duplication across renderers
+- `SectionBuilder` utility provides consistent collapsible section creation across all 5 config panes
 
 ---
 
@@ -254,9 +256,9 @@ single image file.
 
 ---
 
-### F4. Split-Channel Export
+### F4. Split-Channel Export -- COMPLETED (v0.7.0)
 
-**Priority:** P1
+**Priority:** P1 -- **IMPLEMENTED**
 **Source:** QuickFigures (one-click split channels + merge figure)
 
 **Description:**
@@ -381,9 +383,9 @@ Configurable position, font size, color, and style.
 
 ---
 
-### F6. SVG / Vector Export
+### F6. SVG / Vector Export -- COMPLETED (v0.6.0)
 
-**Priority:** P2
+**Priority:** P2 -- **IMPLEMENTED**
 **Source:** BioVoxxel (SVG with editable overlays), QuickFigures (SVG, PDF, EPS)
 
 **Description:**
@@ -428,12 +430,12 @@ post-processing in Inkscape or Illustrator without quality loss on overlays.
   iterate `imageData.getHierarchy().getAnnotationObjects()` and convert
   each `PathObject.getROI().getGeometry()` to SVG path data.
 
-**Effort estimate:**
-- New classes: 1 (`SvgExporter`, ~400-600 LOC for no-Batik approach)
-- Modified files: 2 (`OutputFormat`, `BatchExportTask`)
-- New UI: minimal (format selection already exists)
-- Estimated total LOC: ~500-700
-- Test files: 1 new
+**Implementation (completed v0.6.0):**
+- Used JFreeSVG library (org.jfree.svg 5.0.6) instead of Apache Batik or manual SVG DOM -- lightweight, clean API via `SVGGraphics2D` that accepts standard `Graphics2D` drawing calls
+- Added `SVG` to `OutputFormat` enum
+- SVG available for rendered exports (classifier overlay, object overlay, density map overlay); base image embedded as raster, overlays as vector paths
+- Scale bars, panel labels, and color scale bars render as SVG vector text/shapes
+- JFreeSVG is the first (and only) external dependency beyond QuPath
 
 **Cross-references:** F14 (metadata embedding in SVG), F9 (arrow overlays as SVG elements)
 
@@ -442,14 +444,14 @@ post-processing in Inkscape or Illustrator without quality loss on overlays.
 |------|-------|-----------|
 | `OutputFormat.java` | 6-28 (enum) | Add SVG format entry |
 | `RenderedImageExporter.java` | 638-668 (paintObjects) | Uses HierarchyOverlay -- SVG needs direct ROI iteration instead |
-| `build.gradle.kts` | 19-29 (dependencies) | Currently zero external deps; Batik would be first |
+| `build.gradle.kts` | 19-29 (dependencies) | JFreeSVG 5.0.6 added as first external dependency (v0.6.0) |
 | `BatchExportTask.java` | 147-152 (switch on category) | Add SVG dispatch path |
 
 ---
 
-### F7. Display Range Matching Across Images
+### F7. Display Range Matching Across Images -- COMPLETED (v0.7.0)
 
-**Priority:** P2
+**Priority:** P2 -- **IMPLEMENTED**
 **Source:** QuickFigures (Match channels), BioVoxxel (5D Contrast Optimizer)
 
 **Description:**
@@ -1316,18 +1318,21 @@ image read alongside the rendered version.
 | ~~F1. Annotation region export~~ | ~~P1~~ | ~~Medium~~ | ~~None~~ | **DONE (v0.5.0)** | 6 | ~350 |
 | ~~F5. Panel labels (A, B, C)~~ | ~~P1~~ | ~~Low~~ | ~~None~~ | **DONE (v0.5.0)** | 10 | ~450 |
 | ~~F17. Visual LUT selector~~ | ~~P2~~ | ~~Low~~ | ~~None~~ | **DONE (v0.5.0)** | 1 | ~60 |
+| ~~F6. SVG / vector export~~ | ~~P2~~ | ~~High~~ | ~~None~~ | **DONE (v0.6.0)** | 3 | ~500 |
+| ~~Object Crops~~ | ~~P1~~ | ~~Medium~~ | ~~None~~ | **DONE (v0.6.0)** | 6 | ~400 |
+| ~~Collapsible UI sections~~ | ~~--~~ | ~~Medium~~ | ~~None~~ | **DONE (v0.6.0)** | 7 | ~300 |
 | F2. Inset / zoom panels | P1 | High | F1 (done) | Phase 2 | 5 | ~450 |
-| F4. Split-channel export | P1 | High | None | Phase 2 | 4 | ~250 |
-| F7. Display range matching | P2 | Medium | None | Phase 2 | 5 | ~250 |
+| ~~F4. Split-channel export~~ | ~~P1~~ | ~~High~~ | ~~None~~ | **DONE (v0.7.0)** | 8 | ~600 |
+| ~~F7. Display range matching~~ | ~~P2~~ | ~~Medium~~ | ~~None~~ | **DONE (v0.7.0)** | 8 | ~600 |
 | F8. DPI control | P2 | Low | None | Phase 2 | 4-5 | ~200 |
 | F11. Dimension labels | P2 | Low | None | Phase 2 | 5 | ~250 |
-| F3. Multi-panel grid layout | P1 | High | F4, F5, F20 | Phase 3 | 3-4 | ~500 |
+| F3. Multi-panel grid layout | P1 | High | F4 (done), F5 (done), F20 | Phase 3 | 3-4 | ~500 |
 | F10. CDV simulation | P2 | Low | None | Phase 3 | 2-3 | ~180 |
 | F19. Contour mask export | P2 | Medium | None | Phase 3 | 4 | ~200 |
 | F20. Matched panel dimensions | P2 | Medium | None (but F3 uses) | Phase 3 | 4 | ~150 |
 | F9. Arrow / shape overlays | P2 | Medium | None | Phase 3 | 2-3 | ~120 |
 | F21. Stain separation export | P2 | Medium | None | Phase 3 | 3-4 | ~200 |
-| F6. SVG / vector export | P2 | High | None (no Batik) | Phase 4 | 2-3 | ~600 |
+| ~~F6. SVG / vector export~~ | ~~P2~~ | ~~High~~ | ~~None~~ | **DONE (v0.6.0)** | 3 | ~500 |
 | F13. Custom text overlays | P2 | Medium | F11 | Phase 4 | 3-4 | ~250 |
 | F12. Crop and rotation | P2 | High | F1 | Phase 4 | 3-4 | ~200 |
 | F16. Figure templates | P3 | Medium | F3 | Phase 4 | 2-3 | ~200 |
@@ -1411,11 +1416,12 @@ The dependency ordering has been validated against the actual code structure:
   - `DimensionLabelConfig` (5 fields: show, template, position, fontSize, bold)
   This refactoring is backward-compatible via Builder delegation.
 
-- **RenderedConfigPane UI complexity**: the config pane is already ~1050 lines
-  with ~38 controls and visibility toggling. Adding more sections risks
-  overwhelming users. **Recommendation**: switch to a `TitledPane` (accordion)
-  or `TabPane` layout for overlay options (Scale Bar, Color Scale Bar, Inset,
-  Panel Label, Dimension Label). Each overlay section collapses when not in use.
+- **RenderedConfigPane UI complexity** -- **RESOLVED (v0.6.0)**: All 5 config panes
+  now use collapsible `TitledPane` sections via `SectionBuilder`. Essential
+  sections are expanded by default; advanced sections (Scale Bar, Color Scale Bar,
+  Panel Label, Object Overlays, Label Masks) start collapsed. This directly
+  addresses the recommendation below. Future overlay sections (Inset, Dimension
+  Label) should follow the same pattern.
 
 - **Script generation complexity**: each new feature adds more Groovy code
   to the generated script. The classifier overlay script is already ~200 lines

@@ -134,6 +134,80 @@ public class QuietPreferences {
     private static final BooleanProperty renderedPanelLabelBold =
             PathPrefs.createPersistentPreference(PREFIX + "rendered.panelLabelBold", true);
 
+    // --- Rendered split-channel preferences ---
+
+    private static final BooleanProperty renderedSplitChannels =
+            PathPrefs.createPersistentPreference(PREFIX + "rendered.splitChannels", false);
+
+    private static final BooleanProperty renderedSplitChannelsGrayscale =
+            PathPrefs.createPersistentPreference(PREFIX + "rendered.splitChannelsGrayscale", true);
+
+    private static final BooleanProperty renderedSplitChannelColorBorder =
+            PathPrefs.createPersistentPreference(PREFIX + "rendered.splitChannelColorBorder", false);
+
+    private static final BooleanProperty renderedChannelColorLegend =
+            PathPrefs.createPersistentPreference(PREFIX + "rendered.channelColorLegend", true);
+
+    private static final DoubleProperty renderedMatchedDisplayPercentile =
+            PathPrefs.createPersistentPreference(PREFIX + "rendered.matchedDisplayPercentile", 0.1);
+
+    // --- Rendered info label preferences ---
+
+    private static final BooleanProperty renderedShowInfoLabel =
+            PathPrefs.createPersistentPreference(PREFIX + "rendered.showInfoLabel", false);
+
+    private static final StringProperty renderedInfoLabelTemplate =
+            PathPrefs.createPersistentPreference(PREFIX + "rendered.infoLabelTemplate", "");
+
+    private static final StringProperty renderedInfoLabelPosition =
+            PathPrefs.createPersistentPreference(PREFIX + "rendered.infoLabelPosition", "LOWER_LEFT");
+
+    private static final IntegerProperty renderedInfoLabelFontSize =
+            PathPrefs.createPersistentPreference(PREFIX + "rendered.infoLabelFontSize", 0);
+
+    private static final BooleanProperty renderedInfoLabelBold =
+            PathPrefs.createPersistentPreference(PREFIX + "rendered.infoLabelBold", false);
+
+    // --- Rendered DPI control preferences ---
+
+    private static final IntegerProperty renderedTargetDpi =
+            PathPrefs.createPersistentPreference(PREFIX + "rendered.targetDpi", 0);
+
+    private static final StringProperty renderedResolutionMode =
+            PathPrefs.createPersistentPreference(PREFIX + "rendered.resolutionMode", "DOWNSAMPLE");
+
+    // --- Rendered inset/zoom preferences ---
+
+    private static final BooleanProperty renderedShowInset =
+            PathPrefs.createPersistentPreference(PREFIX + "rendered.showInset", false);
+
+    private static final DoubleProperty renderedInsetSourceX =
+            PathPrefs.createPersistentPreference(PREFIX + "rendered.insetSourceX", 0.4);
+
+    private static final DoubleProperty renderedInsetSourceY =
+            PathPrefs.createPersistentPreference(PREFIX + "rendered.insetSourceY", 0.4);
+
+    private static final DoubleProperty renderedInsetSourceW =
+            PathPrefs.createPersistentPreference(PREFIX + "rendered.insetSourceW", 0.15);
+
+    private static final DoubleProperty renderedInsetSourceH =
+            PathPrefs.createPersistentPreference(PREFIX + "rendered.insetSourceH", 0.15);
+
+    private static final IntegerProperty renderedInsetMagnification =
+            PathPrefs.createPersistentPreference(PREFIX + "rendered.insetMagnification", 4);
+
+    private static final StringProperty renderedInsetPosition =
+            PathPrefs.createPersistentPreference(PREFIX + "rendered.insetPosition", "UPPER_RIGHT");
+
+    private static final StringProperty renderedInsetFrameColor =
+            PathPrefs.createPersistentPreference(PREFIX + "rendered.insetFrameColor", "#FFFF00");
+
+    private static final IntegerProperty renderedInsetFrameWidth =
+            PathPrefs.createPersistentPreference(PREFIX + "rendered.insetFrameWidth", 0);
+
+    private static final BooleanProperty renderedInsetConnectingLines =
+            PathPrefs.createPersistentPreference(PREFIX + "rendered.insetConnectingLines", true);
+
     // --- Mask export preferences ---
 
     private static final StringProperty maskType =
@@ -392,6 +466,102 @@ public class QuietPreferences {
     public static BooleanProperty renderedPanelLabelBoldProperty() { return renderedPanelLabelBold; }
     public static boolean isRenderedPanelLabelBold() { return renderedPanelLabelBold.get(); }
     public static void setRenderedPanelLabelBold(boolean value) { renderedPanelLabelBold.set(value); }
+
+    // --- Split-channel ---
+
+    public static BooleanProperty renderedSplitChannelsProperty() { return renderedSplitChannels; }
+    public static boolean isRenderedSplitChannels() { return renderedSplitChannels.get(); }
+    public static void setRenderedSplitChannels(boolean value) { renderedSplitChannels.set(value); }
+
+    public static BooleanProperty renderedSplitChannelsGrayscaleProperty() { return renderedSplitChannelsGrayscale; }
+    public static boolean isRenderedSplitChannelsGrayscale() { return renderedSplitChannelsGrayscale.get(); }
+    public static void setRenderedSplitChannelsGrayscale(boolean value) { renderedSplitChannelsGrayscale.set(value); }
+
+    public static BooleanProperty renderedSplitChannelColorBorderProperty() { return renderedSplitChannelColorBorder; }
+    public static boolean isRenderedSplitChannelColorBorder() { return renderedSplitChannelColorBorder.get(); }
+    public static void setRenderedSplitChannelColorBorder(boolean value) { renderedSplitChannelColorBorder.set(value); }
+
+    public static BooleanProperty renderedChannelColorLegendProperty() { return renderedChannelColorLegend; }
+    public static boolean isRenderedChannelColorLegend() { return renderedChannelColorLegend.get(); }
+    public static void setRenderedChannelColorLegend(boolean value) { renderedChannelColorLegend.set(value); }
+
+    public static DoubleProperty renderedMatchedDisplayPercentileProperty() { return renderedMatchedDisplayPercentile; }
+    public static double getRenderedMatchedDisplayPercentile() { return renderedMatchedDisplayPercentile.get(); }
+    public static void setRenderedMatchedDisplayPercentile(double value) { renderedMatchedDisplayPercentile.set(value); }
+
+    // --- Info label ---
+
+    public static BooleanProperty renderedShowInfoLabelProperty() { return renderedShowInfoLabel; }
+    public static boolean isRenderedShowInfoLabel() { return renderedShowInfoLabel.get(); }
+    public static void setRenderedShowInfoLabel(boolean value) { renderedShowInfoLabel.set(value); }
+
+    public static StringProperty renderedInfoLabelTemplateProperty() { return renderedInfoLabelTemplate; }
+    public static String getRenderedInfoLabelTemplate() { return renderedInfoLabelTemplate.get(); }
+    public static void setRenderedInfoLabelTemplate(String value) { renderedInfoLabelTemplate.set(value != null ? value : ""); }
+
+    public static StringProperty renderedInfoLabelPositionProperty() { return renderedInfoLabelPosition; }
+    public static String getRenderedInfoLabelPosition() { return renderedInfoLabelPosition.get(); }
+    public static void setRenderedInfoLabelPosition(String value) { renderedInfoLabelPosition.set(value != null ? value : "LOWER_LEFT"); }
+
+    public static IntegerProperty renderedInfoLabelFontSizeProperty() { return renderedInfoLabelFontSize; }
+    public static int getRenderedInfoLabelFontSize() { return renderedInfoLabelFontSize.get(); }
+    public static void setRenderedInfoLabelFontSize(int value) { renderedInfoLabelFontSize.set(value); }
+
+    public static BooleanProperty renderedInfoLabelBoldProperty() { return renderedInfoLabelBold; }
+    public static boolean isRenderedInfoLabelBold() { return renderedInfoLabelBold.get(); }
+    public static void setRenderedInfoLabelBold(boolean value) { renderedInfoLabelBold.set(value); }
+
+    // --- DPI control ---
+
+    public static IntegerProperty renderedTargetDpiProperty() { return renderedTargetDpi; }
+    public static int getRenderedTargetDpi() { return renderedTargetDpi.get(); }
+    public static void setRenderedTargetDpi(int value) { renderedTargetDpi.set(value); }
+
+    public static StringProperty renderedResolutionModeProperty() { return renderedResolutionMode; }
+    public static String getRenderedResolutionMode() { return renderedResolutionMode.get(); }
+    public static void setRenderedResolutionMode(String value) { renderedResolutionMode.set(value != null ? value : "DOWNSAMPLE"); }
+
+    // --- Inset/zoom ---
+
+    public static BooleanProperty renderedShowInsetProperty() { return renderedShowInset; }
+    public static boolean isRenderedShowInset() { return renderedShowInset.get(); }
+    public static void setRenderedShowInset(boolean value) { renderedShowInset.set(value); }
+
+    public static DoubleProperty renderedInsetSourceXProperty() { return renderedInsetSourceX; }
+    public static double getRenderedInsetSourceX() { return renderedInsetSourceX.get(); }
+    public static void setRenderedInsetSourceX(double value) { renderedInsetSourceX.set(value); }
+
+    public static DoubleProperty renderedInsetSourceYProperty() { return renderedInsetSourceY; }
+    public static double getRenderedInsetSourceY() { return renderedInsetSourceY.get(); }
+    public static void setRenderedInsetSourceY(double value) { renderedInsetSourceY.set(value); }
+
+    public static DoubleProperty renderedInsetSourceWProperty() { return renderedInsetSourceW; }
+    public static double getRenderedInsetSourceW() { return renderedInsetSourceW.get(); }
+    public static void setRenderedInsetSourceW(double value) { renderedInsetSourceW.set(value); }
+
+    public static DoubleProperty renderedInsetSourceHProperty() { return renderedInsetSourceH; }
+    public static double getRenderedInsetSourceH() { return renderedInsetSourceH.get(); }
+    public static void setRenderedInsetSourceH(double value) { renderedInsetSourceH.set(value); }
+
+    public static IntegerProperty renderedInsetMagnificationProperty() { return renderedInsetMagnification; }
+    public static int getRenderedInsetMagnification() { return renderedInsetMagnification.get(); }
+    public static void setRenderedInsetMagnification(int value) { renderedInsetMagnification.set(value); }
+
+    public static StringProperty renderedInsetPositionProperty() { return renderedInsetPosition; }
+    public static String getRenderedInsetPosition() { return renderedInsetPosition.get(); }
+    public static void setRenderedInsetPosition(String value) { renderedInsetPosition.set(value != null ? value : "UPPER_RIGHT"); }
+
+    public static StringProperty renderedInsetFrameColorProperty() { return renderedInsetFrameColor; }
+    public static String getRenderedInsetFrameColor() { return renderedInsetFrameColor.get(); }
+    public static void setRenderedInsetFrameColor(String value) { renderedInsetFrameColor.set(value != null ? value : "#FFFF00"); }
+
+    public static IntegerProperty renderedInsetFrameWidthProperty() { return renderedInsetFrameWidth; }
+    public static int getRenderedInsetFrameWidth() { return renderedInsetFrameWidth.get(); }
+    public static void setRenderedInsetFrameWidth(int value) { renderedInsetFrameWidth.set(value); }
+
+    public static BooleanProperty renderedInsetConnectingLinesProperty() { return renderedInsetConnectingLines; }
+    public static boolean isRenderedInsetConnectingLines() { return renderedInsetConnectingLines.get(); }
+    public static void setRenderedInsetConnectingLines(boolean value) { renderedInsetConnectingLines.set(value); }
 
     // ==================== Mask ====================
 

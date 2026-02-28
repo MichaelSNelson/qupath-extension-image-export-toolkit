@@ -13,6 +13,7 @@ import org.slf4j.LoggerFactory;
 import javafx.concurrent.Task;
 import qupath.lib.analysis.heatmaps.DensityMaps.DensityMapBuilder;
 import qupath.lib.classifiers.pixel.PixelClassifier;
+import qupath.lib.display.settings.ImageDisplaySettings;
 import qupath.lib.images.ImageData;
 import qupath.lib.images.servers.ImageServer;
 import qupath.lib.images.servers.PixelCalibration;
@@ -45,6 +46,9 @@ public class BatchExportTask extends Task<ExportResult> {
     private final String filenamePrefix;
     private final String filenameSuffix;
     private final boolean channelsConsistent;
+
+    /** Effective config after optional GLOBAL_MATCHED pre-scan. */
+    private RenderedExportConfig effectiveConfig;
 
     /**
      * Create a batch export task for rendered exports.
@@ -164,6 +168,30 @@ public class BatchExportTask extends Task<ExportResult> {
         int skipped = 0;
         List<String> errors = new ArrayList<>();
 
+        // Resolve effective config (may pre-scan for GLOBAL_MATCHED)
+        effectiveConfig = renderedConfig;
+        if (renderedConfig != null && category == ExportCategory.RENDERED
+                && renderedConfig.getDisplaySettingsMode()
+                    == RenderedExportConfig.DisplaySettingsMode.GLOBAL_MATCHED) {
+            updateMessage("Scanning images for display range matching...");
+            var ranges = GlobalDisplayRangeScanner.computeGlobalRanges(
+                    entries, renderedConfig.getMatchedDisplayPercentile(), 32.0,
+                    (i, t) -> {
+                        updateMessage(String.format(
+                                "Scanning %d of %d for display ranges...", i + 1, t));
+                        updateProgress(i, t + total);
+                    });
+            if (ranges != null && !ranges.isEmpty()) {
+                var settings = GlobalDisplayRangeScanner.buildDisplaySettings(
+                        ranges, entries.get(0));
+                if (settings != null) {
+                    effectiveConfig = rebuildWithMatchedSettings(renderedConfig, settings);
+                    logger.info("Global matched display ranges computed for {} channels",
+                            ranges.size());
+                }
+            }
+        }
+
         // Metadata tracking
         Map<String, ExportMetadataWriter.ChannelGroup> channelGroups = new LinkedHashMap<>();
         PixelCalibration firstCalibration = null;
@@ -250,24 +278,33 @@ public class BatchExportTask extends Task<ExportResult> {
 
     private void exportRendered(ImageData<BufferedImage> imageData, String entryName,
                                 int panelIndex) throws Exception {
-        if (renderedConfig.getRegionType() == RenderedExportConfig.RegionType.ALL_ANNOTATIONS) {
+        var config = effectiveConfig != null ? effectiveConfig : renderedConfig;
+
+        // Split-channel dispatch
+        if (config.splitChannel().enabled()) {
+            RenderedImageExporter.exportSplitChannels(
+                    imageData, classifier, densityBuilder, config, entryName, panelIndex);
+            return;
+        }
+
+        if (config.getRegionType() == RenderedExportConfig.RegionType.ALL_ANNOTATIONS) {
             RenderedImageExporter.exportPerAnnotation(
-                    imageData, classifier, densityBuilder, renderedConfig, entryName, panelIndex);
+                    imageData, classifier, densityBuilder, config, entryName, panelIndex);
         } else {
-            switch (renderedConfig.getRenderMode()) {
+            switch (config.getRenderMode()) {
                 case OBJECT_OVERLAY ->
                     RenderedImageExporter.exportWithObjectOverlay(
-                            imageData, renderedConfig, entryName, panelIndex);
+                            imageData, config, entryName, panelIndex);
                 case DENSITY_MAP_OVERLAY ->
                     RenderedImageExporter.exportWithDensityMap(
-                            imageData, densityBuilder, renderedConfig, entryName, panelIndex);
+                            imageData, densityBuilder, config, entryName, panelIndex);
                 case CLASSIFIER_OVERLAY -> {
                     if (!classifier.supportsImage(imageData)) {
                         throw new IllegalArgumentException(
                                 "Classifier does not support image: " + entryName);
                     }
                     RenderedImageExporter.exportWithClassifier(
-                            imageData, classifier, renderedConfig, entryName, panelIndex);
+                            imageData, classifier, config, entryName, panelIndex);
                 }
             }
         }
@@ -372,6 +409,39 @@ public class BatchExportTask extends Task<ExportResult> {
             case TILED -> tiledConfig != null && tiledConfig.isAddToWorkflow();
             case OBJECT_CROPS -> objectCropConfig != null && objectCropConfig.isAddToWorkflow();
         };
+    }
+
+    /**
+     * Rebuild a config with computed global-matched display settings injected.
+     * All other fields are copied from the original config.
+     */
+    private static RenderedExportConfig rebuildWithMatchedSettings(
+            RenderedExportConfig original, ImageDisplaySettings settings) {
+        return new RenderedExportConfig.Builder()
+                // Core fields
+                .regionType(original.getRegionType())
+                .selectedClassifications(original.getSelectedClassifications())
+                .paddingPixels(original.getPaddingPixels())
+                .renderMode(original.getRenderMode())
+                .displaySettingsMode(original.getDisplaySettingsMode())
+                .capturedDisplaySettings(settings) // inject computed settings
+                .displayPresetName(original.getDisplayPresetName())
+                .overlayOpacity(original.getOverlayOpacity())
+                .downsample(original.getDownsample())
+                .targetDpi(original.getTargetDpi())
+                .format(original.getFormat())
+                .outputDirectory(original.getOutputDirectory())
+                .addToWorkflow(original.isAddToWorkflow())
+                .matchedDisplayPercentile(original.getMatchedDisplayPercentile())
+                // Sub-configs copied wholesale
+                .overlays(original.overlays())
+                .scaleBar(original.scaleBar())
+                .colorScaleBar(original.colorScaleBar())
+                .panelLabel(original.panelLabel())
+                .infoLabel(original.infoLabel())
+                .splitChannel(original.splitChannel())
+                .inset(original.inset())
+                .build();
     }
 
     private void addWorkflowStep(ImageData<BufferedImage> imageData,

@@ -27,14 +27,14 @@ class RenderedExportConfigTest {
                 .build();
 
         assertEquals(RenderedExportConfig.RenderMode.CLASSIFIER_OVERLAY, config.getRenderMode());
-        assertEquals("myClassifier", config.getClassifierName());
+        assertEquals("myClassifier", config.overlays().classifierName());
         assertEquals(0.75, config.getOverlayOpacity(), 0.001);
         assertEquals(8.0, config.getDownsample(), 0.001);
         assertEquals(OutputFormat.TIFF, config.getFormat());
         assertEquals(tempDir, config.getOutputDirectory());
-        assertTrue(config.isIncludeAnnotations());
-        assertTrue(config.isFillAnnotations());
-        assertFalse(config.isShowNames());
+        assertTrue(config.overlays().includeAnnotations());
+        assertTrue(config.overlays().fillAnnotations());
+        assertFalse(config.overlays().showNames());
         assertFalse(config.isAddToWorkflow());
     }
 
@@ -148,17 +148,17 @@ class RenderedExportConfigTest {
         assertEquals(0.5, config.getOverlayOpacity(), 0.001);
         assertEquals(4.0, config.getDownsample(), 0.001);
         assertEquals(OutputFormat.PNG, config.getFormat());
-        assertFalse(config.isIncludeAnnotations());
-        assertTrue(config.isIncludeDetections());
-        assertFalse(config.isFillAnnotations());
-        assertFalse(config.isShowNames());
+        assertFalse(config.overlays().includeAnnotations());
+        assertTrue(config.overlays().includeDetections());
+        assertFalse(config.overlays().fillAnnotations());
+        assertFalse(config.overlays().showNames());
         assertTrue(config.isAddToWorkflow());
         // Scale bar defaults
-        assertFalse(config.isShowScaleBar());
-        assertEquals("#FFFFFF", config.getScaleBarColorHex());
-        assertEquals(0, config.getScaleBarFontSize());
-        assertTrue(config.isScaleBarBoldText());
-        assertEquals(java.awt.Color.WHITE, config.getScaleBarColorAsAwt());
+        assertFalse(config.scaleBar().show());
+        assertEquals("#FFFFFF", config.scaleBar().colorHex());
+        assertEquals(0, config.scaleBar().fontSize());
+        assertTrue(config.scaleBar().bold());
+        assertEquals(java.awt.Color.WHITE, config.scaleBar().colorAsAwt());
     }
 
     @Test
@@ -171,10 +171,10 @@ class RenderedExportConfigTest {
                 .scaleBarBoldText(false)
                 .build();
 
-        assertEquals("#FF0000", config.getScaleBarColorHex());
-        assertEquals(java.awt.Color.RED, config.getScaleBarColorAsAwt());
-        assertEquals(24, config.getScaleBarFontSize());
-        assertFalse(config.isScaleBarBoldText());
+        assertEquals("#FF0000", config.scaleBar().colorHex());
+        assertEquals(java.awt.Color.RED, config.scaleBar().colorAsAwt());
+        assertEquals(24, config.scaleBar().fontSize());
+        assertFalse(config.scaleBar().bold());
     }
 
     @Test
@@ -186,7 +186,7 @@ class RenderedExportConfigTest {
                 .build();
 
         // Invalid hex should fall back to white
-        assertEquals(java.awt.Color.WHITE, config.getScaleBarColorAsAwt());
+        assertEquals(java.awt.Color.WHITE, config.scaleBar().colorAsAwt());
     }
 
     @Test
@@ -198,8 +198,8 @@ class RenderedExportConfigTest {
                 .build();
 
         assertEquals(RenderedExportConfig.RenderMode.OBJECT_OVERLAY, config.getRenderMode());
-        assertNull(config.getClassifierName());
-        assertTrue(config.isIncludeAnnotations());
+        assertNull(config.overlays().classifierName());
+        assertTrue(config.overlays().includeAnnotations());
     }
 
     @Test
@@ -222,8 +222,8 @@ class RenderedExportConfigTest {
                 .outputDirectory(tempDir)
                 .build();
 
-        assertFalse(config.isIncludeAnnotations());
-        assertTrue(config.isIncludeDetections());
+        assertFalse(config.overlays().includeAnnotations());
+        assertTrue(config.overlays().includeDetections());
     }
 
     @Test
@@ -255,8 +255,8 @@ class RenderedExportConfigTest {
                 .build();
 
         assertEquals(RenderedExportConfig.RenderMode.DENSITY_MAP_OVERLAY, config.getRenderMode());
-        assertEquals("my_density_map", config.getDensityMapName());
-        assertEquals("Magma", config.getColormapName());
+        assertEquals("my_density_map", config.overlays().densityMapName());
+        assertEquals("Magma", config.overlays().colormapName());
     }
 
     @Test
@@ -266,10 +266,10 @@ class RenderedExportConfigTest {
                 .outputDirectory(tempDir)
                 .build();
 
-        assertFalse(config.isShowColorScaleBar());
-        assertEquals(ScaleBarRenderer.Position.LOWER_RIGHT, config.getColorScaleBarPosition());
-        assertEquals(0, config.getColorScaleBarFontSize());
-        assertTrue(config.isColorScaleBarBoldText());
+        assertFalse(config.colorScaleBar().show());
+        assertEquals(ScaleBarRenderer.Position.LOWER_RIGHT, config.colorScaleBar().position());
+        assertEquals(0, config.colorScaleBar().fontSize());
+        assertTrue(config.colorScaleBar().bold());
     }
 
     @Test
@@ -280,7 +280,7 @@ class RenderedExportConfigTest {
                 .outputDirectory(tempDir)
                 .build();
 
-        assertEquals("Viridis", config.getColormapName());
+        assertEquals("Viridis", config.overlays().colormapName());
     }
 
     @Test
@@ -290,11 +290,11 @@ class RenderedExportConfigTest {
                 .outputDirectory(tempDir)
                 .build();
 
-        assertFalse(config.isShowPanelLabel());
-        assertNull(config.getPanelLabelText());
-        assertEquals(ScaleBarRenderer.Position.UPPER_LEFT, config.getPanelLabelPosition());
-        assertEquals(0, config.getPanelLabelFontSize());
-        assertTrue(config.isPanelLabelBold());
+        assertFalse(config.panelLabel().show());
+        assertNull(config.panelLabel().text());
+        assertEquals(ScaleBarRenderer.Position.UPPER_LEFT, config.panelLabel().position());
+        assertEquals(0, config.panelLabel().fontSize());
+        assertTrue(config.panelLabel().bold());
     }
 
     @Test
@@ -309,11 +309,11 @@ class RenderedExportConfigTest {
                 .outputDirectory(tempDir)
                 .build();
 
-        assertTrue(config.isShowPanelLabel());
-        assertEquals("A", config.getPanelLabelText());
-        assertEquals(ScaleBarRenderer.Position.LOWER_RIGHT, config.getPanelLabelPosition());
-        assertEquals(28, config.getPanelLabelFontSize());
-        assertFalse(config.isPanelLabelBold());
+        assertTrue(config.panelLabel().show());
+        assertEquals("A", config.panelLabel().text());
+        assertEquals(ScaleBarRenderer.Position.LOWER_RIGHT, config.panelLabel().position());
+        assertEquals(28, config.panelLabel().fontSize());
+        assertFalse(config.panelLabel().bold());
     }
 
     @Test
@@ -328,10 +328,10 @@ class RenderedExportConfigTest {
                 .outputDirectory(tempDir)
                 .build();
 
-        assertTrue(config.isShowColorScaleBar());
-        assertEquals(ScaleBarRenderer.Position.UPPER_LEFT, config.getColorScaleBarPosition());
-        assertEquals(18, config.getColorScaleBarFontSize());
-        assertFalse(config.isColorScaleBarBoldText());
+        assertTrue(config.colorScaleBar().show());
+        assertEquals(ScaleBarRenderer.Position.UPPER_LEFT, config.colorScaleBar().position());
+        assertEquals(18, config.colorScaleBar().fontSize());
+        assertFalse(config.colorScaleBar().bold());
     }
 
     @Test

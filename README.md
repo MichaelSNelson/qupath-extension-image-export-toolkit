@@ -5,7 +5,7 @@
 
 A [QuPath](https://qupath.github.io/) extension for batch exporting images in multiple formats for machine learning training and analysis.
 
-QuIET provides a guided wizard UI for exporting rendered overlays, label/instance masks, raw pixel data, and tiled image+label pairs -- all with self-contained Groovy script generation so every export is reproducible and editable.
+QuIET provides a guided wizard UI for exporting rendered overlays, label/instance masks, raw pixel data, tiled image+label pairs, and per-object classification crops -- all with self-contained Groovy script generation so every export is reproducible and editable.
 
 ## Requirements
 
@@ -26,8 +26,8 @@ The extension appears under **Extensions > QuIET > Export Images...**
 
 1. Open a QuPath project containing annotated images
 2. Go to **Extensions > QuIET > Export Images...**
-3. **Step 1** -- Choose an export category (Rendered, Mask, Raw, or Tiled)
-4. **Step 2** -- Configure export settings (mask type, downsample, format, etc.)
+3. **Step 1** -- Choose an export category (Rendered, Mask, Raw, Tiled, or Object Crops)
+4. **Step 2** -- Configure export settings (grouped into collapsible sections)
 5. **Step 3** -- Select images, choose output directory, and click **Export**
 
 Every export also generates a **Groovy script** that you can copy, save, and re-run from QuPath's built-in script editor -- no extension required.
@@ -51,7 +51,7 @@ Export images with visual overlays composited onto the base image.
 | **Color Scale Bar** | For density map mode, optionally burn a color-mapped legend with min/max labels (see below) |
 | **Panel Label** | Optionally add a letter label (A, B, C...) for multi-panel publication figures (see below) |
 | **Downsample** | Resolution factor (1x = full resolution, 4x = quarter, etc.) |
-| **Format** | PNG, TIFF, JPEG, OME-TIFF |
+| **Format** | PNG, TIFF, JPEG, OME-TIFF, SVG |
 
 #### Display Settings
 
@@ -168,6 +168,25 @@ Export fixed-size image + label tile pairs for deep learning frameworks (StarDis
 | **Annotated only** | Skip tiles that contain no annotated objects |
 | **GeoJSON per tile** | Export object geometries for each tile |
 
+### Object Crops (Classification Training)
+
+Export individual object crops organized by classification for training image classifiers (e.g., cell type classifiers, detection quality filters).
+
+| Option | Description |
+|--------|-------------|
+| **Object type** | Detections, Cells, or All detection objects |
+| **Crop size** | Fixed output size in pixels (e.g., 64x64) |
+| **Padding** | Extra pixels around the object centroid |
+| **Downsample** | Resolution factor for crop extraction |
+| **Label format** | Organize by subdirectory per class, or filename prefix |
+| **Classification filter** | Select/deselect which classifications to export |
+| **Format** | PNG, TIFF, JPEG |
+
+Output structure depends on the label format:
+
+- **Subdirectory**: `crops/ClassName/image_obj001.png`
+- **Filename prefix**: `crops/ClassName_image_obj001.png`
+
 ### GeoJSON Export
 
 An orthogonal option available alongside any export category. When enabled, QuIET exports all annotations and detections as a `.geojson` file per image -- useful for COCO/YOLO-style training pipelines that need geometry alongside image data.
@@ -228,6 +247,9 @@ Exports are written to a configurable output directory. The default structure un
         <image_name>_[x,y,w,h].tif
         <image_name>_[x,y,w,h].png   (label)
       export_info.txt        # Channel info, tile params, pixel size
+    crops/                   # Object crop exports
+      <ClassName>/
+        <image_name>_obj001.png
 ```
 
 Filenames are sanitized using QuPath's `GeneralTools.stripInvalidFilenameChars()` for cross-platform compatibility.
@@ -274,8 +296,8 @@ cd qupath-extension-image-export-toolkit
 src/main/java/qupath/ext/quiet/
   QuietExtension.java              # Extension entry point
   export/
-    ExportCategory.java            # RENDERED, MASK, RAW, TILED
-    OutputFormat.java              # PNG, TIFF, JPEG, OME_TIFF, OME_TIFF_PYRAMID
+    ExportCategory.java            # RENDERED, MASK, RAW, TILED, OBJECT_CROPS
+    OutputFormat.java              # PNG, TIFF, JPEG, OME_TIFF, OME_TIFF_PYRAMID, SVG
     RenderedExportConfig.java      # Rendered export configuration (31 fields)
     RenderedImageExporter.java     # Rendered export logic
     MaskExportConfig.java          # Mask/label export configuration
@@ -284,6 +306,8 @@ src/main/java/qupath/ext/quiet/
     RawImageExporter.java          # Raw pixel export logic
     TiledExportConfig.java         # Tiled ML export configuration
     TiledImageExporter.java        # TileExporter-based tiled export
+    ObjectCropConfig.java          # Object crop export configuration
+    ObjectCropExporter.java        # Per-object crop export logic
     GeoJsonExporter.java           # GeoJSON annotation export
     BatchExportTask.java           # JavaFX Task for background batch processing
     ExportResult.java              # Export outcome tracking
@@ -298,13 +322,16 @@ src/main/java/qupath/ext/quiet/
     MaskScriptGenerator.java       # Groovy script for mask export
     RawScriptGenerator.java        # Groovy script for raw export
     TiledScriptGenerator.java      # Groovy script for tiled export
+    ObjectCropScriptGenerator.java # Groovy script for object crop export
   ui/
     ExportWizard.java              # Main wizard window
     CategorySelectionPane.java     # Step 1: category cards
+    SectionBuilder.java            # Collapsible TitledPane section factory
     RenderedConfigPane.java        # Step 2a: rendered options
     MaskConfigPane.java            # Step 2b: mask options
     RawConfigPane.java             # Step 2c: raw options
     TiledConfigPane.java           # Step 2d: tiled options
+    ObjectCropConfigPane.java      # Step 2e: object crop options
     ImageSelectionPane.java        # Step 3: image list + run
   preferences/
     QuietPreferences.java          # Persistent preference storage
@@ -321,6 +348,7 @@ src/main/resources/
 ## Known Limitations
 
 - **OME-TIFF Pyramid** requires `qupath-extension-bioformats` to be installed alongside QuIET. Without it, pyramid exports fall back to flat OME-TIFF.
+- **SVG export** uses the JFreeSVG library for vector rendering. The base image is embedded as a raster element; annotations and overlays are rendered as vector paths. SVG is only available for rendered exports.
 - **Channel selection** currently uses channel indices. The UI populates available channels, but auto-detection from image metadata is planned for a future release.
 - **Tiled GeoJSON** produces one GeoJSON file per tile via QuPath's `TileExporter.exportJson()` API (not a single consolidated file).
 - Rendered export with classifier overlay requires a pixel classifier saved in the QuPath project.
@@ -338,10 +366,8 @@ Future releases may include:
 - DPI / resolution control for journal requirements
 - Dimension / timestamp labels
 - Contour/outline mask export
-- SVG / vector export with editable overlays
 - Stain deconvolution channel export
 - COCO/YOLO annotation format export
-- Per-object crop export for classification training
 
 See `documentation/POTENTIAL_FEATURES.md` for detailed implementation plans.
 

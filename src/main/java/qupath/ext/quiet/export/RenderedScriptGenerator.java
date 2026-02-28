@@ -62,6 +62,9 @@ class RenderedScriptGenerator {
         if (mode == DisplaySettingsMode.CURRENT_VIEWER) {
             appendLine(sb, "import com.google.gson.JsonParser");
         }
+        if (mode == DisplaySettingsMode.GLOBAL_MATCHED) {
+            appendLine(sb, "import java.awt.image.Raster");
+        }
     }
 
     /**
@@ -76,6 +79,8 @@ class RenderedScriptGenerator {
         } else if (mode == DisplaySettingsMode.SAVED_PRESET) {
             String presetName = config.getDisplayPresetName();
             appendLine(sb, "def displayPresetName = " + quote(presetName != null ? presetName : ""));
+        } else if (mode == DisplaySettingsMode.GLOBAL_MATCHED) {
+            appendLine(sb, "def matchedPercentile = " + config.getMatchedDisplayPercentile());
         }
     }
 
@@ -98,8 +103,86 @@ class RenderedScriptGenerator {
             appendLine(sb, "if (displaySettings == null) {");
             appendLine(sb, "    println \"WARNING: Display preset not found: ${displayPresetName}\"");
             appendLine(sb, "}");
+        } else if (mode == DisplaySettingsMode.GLOBAL_MATCHED) {
+            emitGlobalMatchedScanPass(sb);
         }
         appendLine(sb, "");
+    }
+
+    /**
+     * Emit a pre-scan pass that computes global per-channel histogram-based
+     * percentile ranges, then builds displaySettings from the computed ranges.
+     */
+    private static void emitGlobalMatchedScanPass(StringBuilder sb) {
+        appendLine(sb, "// --- Global matched display range scan ---");
+        appendLine(sb, "println 'Scanning images for global display range matching...'");
+        appendLine(sb, "def allEntries = project.getImageList()");
+        appendLine(sb, "// Determine histogram size from first image");
+        appendLine(sb, "def firstData = allEntries[0].readImageData()");
+        appendLine(sb, "def firstServer = firstData.getServer()");
+        appendLine(sb, "int nChannels = firstServer.getMetadata().getChannels().size()");
+        appendLine(sb, "int bpp = firstServer.getPixelType().getBitsPerPixel()");
+        appendLine(sb, "int histSize = bpp <= 8 ? 256 : 65536");
+        appendLine(sb, "long[][] histograms = new long[nChannels][histSize]");
+        appendLine(sb, "firstServer.close()");
+        appendLine(sb, "");
+        appendLine(sb, "for (int si = 0; si < allEntries.size(); si++) {");
+        appendLine(sb, "    println \"  Scanning ${si + 1} of ${allEntries.size()}...\"");
+        appendLine(sb, "    try {");
+        appendLine(sb, "        def scanData = allEntries[si].readImageData()");
+        appendLine(sb, "        def scanServer = scanData.getServer()");
+        appendLine(sb, "        def scanRequest = qupath.lib.regions.RegionRequest.createInstance(");
+        appendLine(sb, "                scanServer.getPath(), 32.0, 0, 0, scanServer.getWidth(), scanServer.getHeight())");
+        appendLine(sb, "        def scanImg = scanServer.readRegion(scanRequest)");
+        appendLine(sb, "        Raster raster = scanImg.getRaster()");
+        appendLine(sb, "        int w = raster.getWidth()");
+        appendLine(sb, "        int h = raster.getHeight()");
+        appendLine(sb, "        int bands = Math.min(raster.getNumBands(), nChannels)");
+        appendLine(sb, "        for (int y = 0; y < h; y++) {");
+        appendLine(sb, "            for (int x = 0; x < w; x++) {");
+        appendLine(sb, "                for (int c = 0; c < bands; c++) {");
+        appendLine(sb, "                    int val = raster.getSample(x, y, c)");
+        appendLine(sb, "                    if (val >= 0 && val < histSize) histograms[c][val]++");
+        appendLine(sb, "                }");
+        appendLine(sb, "            }");
+        appendLine(sb, "        }");
+        appendLine(sb, "        scanServer.close()");
+        appendLine(sb, "    } catch (Exception e) {");
+        appendLine(sb, "        println \"  WARNING: Scan failed for ${allEntries[si].getImageName()}: ${e.getMessage()}\"");
+        appendLine(sb, "    }");
+        appendLine(sb, "}");
+        appendLine(sb, "");
+        appendLine(sb, "// Compute percentile-based ranges");
+        appendLine(sb, "def computedRanges = []");
+        appendLine(sb, "for (int c = 0; c < nChannels; c++) {");
+        appendLine(sb, "    long total = 0");
+        appendLine(sb, "    for (long count : histograms[c]) total += count");
+        appendLine(sb, "    if (total == 0) { computedRanges.add([0, histSize - 1]); continue }");
+        appendLine(sb, "    double clipCount = total * matchedPercentile / 100.0");
+        appendLine(sb, "    long cumLow = 0; int minVal = 0");
+        appendLine(sb, "    for (int i = 0; i < histSize; i++) {");
+        appendLine(sb, "        cumLow += histograms[c][i]");
+        appendLine(sb, "        if (cumLow > clipCount) { minVal = i; break }");
+        appendLine(sb, "    }");
+        appendLine(sb, "    long cumHigh = 0; int maxVal = histSize - 1");
+        appendLine(sb, "    for (int i = histSize - 1; i >= 0; i--) {");
+        appendLine(sb, "        cumHigh += histograms[c][i]");
+        appendLine(sb, "        if (cumHigh > clipCount) { maxVal = i; break }");
+        appendLine(sb, "    }");
+        appendLine(sb, "    if (minVal >= maxVal) maxVal = minVal + 1");
+        appendLine(sb, "    computedRanges.add([minVal, maxVal])");
+        appendLine(sb, "}");
+        appendLine(sb, "println \"Global ranges computed for ${nChannels} channels\"");
+        appendLine(sb, "");
+        appendLine(sb, "// Build display settings from computed ranges");
+        appendLine(sb, "def matchedData = allEntries[0].readImageData()");
+        appendLine(sb, "def matchedDisplay = ImageDisplay.create(matchedData)");
+        appendLine(sb, "def matchedChannels = matchedDisplay.selectedChannels()");
+        appendLine(sb, "for (int c = 0; c < Math.min(matchedChannels.size(), computedRanges.size()); c++) {");
+        appendLine(sb, "    matchedDisplay.setMinMaxDisplay(matchedChannels[c], (float) computedRanges[c][0], (float) computedRanges[c][1])");
+        appendLine(sb, "}");
+        appendLine(sb, "displaySettings = DisplaySettingUtils.displayToSettings(matchedDisplay, 'global_matched')");
+        appendLine(sb, "matchedData.getServer().close()");
     }
 
     // ------------------------------------------------------------------
@@ -119,16 +202,16 @@ class RenderedScriptGenerator {
      * Emit scale bar configuration variables.
      */
     private static void emitScaleBarConfig(StringBuilder sb, RenderedExportConfig config) {
-        appendLine(sb, "def showScaleBar = " + config.isShowScaleBar());
-        appendLine(sb, "def scaleBarPosition = " + quote(config.getScaleBarPosition().name()));
+        appendLine(sb, "def showScaleBar = " + config.scaleBar().show());
+        appendLine(sb, "def scaleBarPosition = " + quote(config.scaleBar().position().name()));
 
         // Parse hex color into RGB components for the Groovy script
-        java.awt.Color awtColor = config.getScaleBarColorAsAwt();
+        java.awt.Color awtColor = config.scaleBar().colorAsAwt();
         appendLine(sb, "def scaleBarColorR = " + awtColor.getRed());
         appendLine(sb, "def scaleBarColorG = " + awtColor.getGreen());
         appendLine(sb, "def scaleBarColorB = " + awtColor.getBlue());
-        appendLine(sb, "def scaleBarFontSize = " + config.getScaleBarFontSize());
-        appendLine(sb, "def scaleBarBoldText = " + config.isScaleBarBoldText());
+        appendLine(sb, "def scaleBarFontSize = " + config.scaleBar().fontSize());
+        appendLine(sb, "def scaleBarBoldText = " + config.scaleBar().bold());
     }
 
     /**
@@ -229,10 +312,10 @@ class RenderedScriptGenerator {
      * Emit color scale bar configuration variables.
      */
     private static void emitColorScaleBarConfig(StringBuilder sb, RenderedExportConfig config) {
-        appendLine(sb, "def showColorScaleBar = " + config.isShowColorScaleBar());
-        appendLine(sb, "def colorScaleBarPosition = " + quote(config.getColorScaleBarPosition().name()));
-        appendLine(sb, "def colorScaleBarFontSize = " + config.getColorScaleBarFontSize());
-        appendLine(sb, "def colorScaleBarBoldText = " + config.isColorScaleBarBoldText());
+        appendLine(sb, "def showColorScaleBar = " + config.colorScaleBar().show());
+        appendLine(sb, "def colorScaleBarPosition = " + quote(config.colorScaleBar().position().name()));
+        appendLine(sb, "def colorScaleBarFontSize = " + config.colorScaleBar().fontSize());
+        appendLine(sb, "def colorScaleBarBoldText = " + config.colorScaleBar().bold());
     }
 
     /**
@@ -347,12 +430,12 @@ class RenderedScriptGenerator {
      * Emit panel label configuration variables.
      */
     private static void emitPanelLabelConfig(StringBuilder sb, RenderedExportConfig config) {
-        appendLine(sb, "def showPanelLabel = " + config.isShowPanelLabel());
-        String text = config.getPanelLabelText();
+        appendLine(sb, "def showPanelLabel = " + config.panelLabel().show());
+        String text = config.panelLabel().text();
         appendLine(sb, "def panelLabelText = " + (text != null && !text.isBlank() ? quote(text) : "null"));
-        appendLine(sb, "def panelLabelPosition = " + quote(config.getPanelLabelPosition().name()));
-        appendLine(sb, "def panelLabelFontSize = " + config.getPanelLabelFontSize());
-        appendLine(sb, "def panelLabelBold = " + config.isPanelLabelBold());
+        appendLine(sb, "def panelLabelPosition = " + quote(config.panelLabel().position().name()));
+        appendLine(sb, "def panelLabelFontSize = " + config.panelLabel().fontSize());
+        appendLine(sb, "def panelLabelBold = " + config.panelLabel().bold());
     }
 
     /**
@@ -413,6 +496,261 @@ class RenderedScriptGenerator {
         appendLine(sb, "                g2d.setComposite(java.awt.AlphaComposite.getInstance(java.awt.AlphaComposite.SRC_OVER, 1.0f))");
         appendLine(sb, "                drawPanelLabel(g2d, outW, outH, label, panelLabelPosition, panelLabelFontSize, panelLabelBold)");
         appendLine(sb, "                annotationIndex++");
+        appendLine(sb, "            }");
+    }
+
+    // ------------------------------------------------------------------
+    // Info label helpers
+    // ------------------------------------------------------------------
+
+    /**
+     * Emit info label configuration variables.
+     */
+    private static void emitInfoLabelConfig(StringBuilder sb, RenderedExportConfig config) {
+        appendLine(sb, "def showInfoLabel = " + config.infoLabel().show());
+        String template = config.infoLabel().text();
+        appendLine(sb, "def infoLabelTemplate = " + (template != null && !template.isBlank() ? quote(template) : "null"));
+        appendLine(sb, "def infoLabelPosition = " + quote(config.infoLabel().position().name()));
+        appendLine(sb, "def infoLabelFontSize = " + config.infoLabel().fontSize());
+        appendLine(sb, "def infoLabelBold = " + config.infoLabel().bold());
+    }
+
+    /**
+     * Emit a self-contained drawInfoLabel Groovy function.
+     * Uses the same 8-direction outlined text technique but smaller default size.
+     */
+    private static void emitInfoLabelFunction(StringBuilder sb) {
+        appendLine(sb, "// Info label drawing function");
+        appendLine(sb, "def drawInfoLabel(Graphics2D g2d, int imgW, int imgH, String label, String pos, int fSize, boolean bold) {");
+        appendLine(sb, "    if (label == null || label.isEmpty()) return");
+        appendLine(sb, "    int minDim = Math.min(imgW, imgH)");
+        appendLine(sb, "    int fontSize = fSize > 0 ? Math.max(4, Math.min(fSize, 200)) : Math.max(12, minDim / 40)");
+        appendLine(sb, "    int margin = Math.max(10, minDim / 40)");
+        appendLine(sb, "    int fontStyle = bold ? Font.BOLD : Font.PLAIN");
+        appendLine(sb, "    g2d.setFont(new Font(Font.SANS_SERIF, fontStyle, fontSize))");
+        appendLine(sb, "    def fm = g2d.getFontMetrics()");
+        appendLine(sb, "    int tw = fm.stringWidth(label)");
+        appendLine(sb, "    int ta = fm.getAscent()");
+        appendLine(sb, "    int tx, ty");
+        appendLine(sb, "    switch (pos) {");
+        appendLine(sb, "        case 'LOWER_LEFT': tx = margin; ty = imgH - margin; break");
+        appendLine(sb, "        case 'UPPER_RIGHT': tx = imgW - margin - tw; ty = margin + ta; break");
+        appendLine(sb, "        case 'UPPER_LEFT': tx = margin; ty = margin + ta; break");
+        appendLine(sb, "        default: tx = imgW - margin - tw; ty = imgH - margin; break");
+        appendLine(sb, "    }");
+        appendLine(sb, "    def primary = Color.WHITE");
+        appendLine(sb, "    def outline = Color.BLACK");
+        appendLine(sb, "    for (int dx = -1; dx <= 1; dx++) {");
+        appendLine(sb, "        for (int dy = -1; dy <= 1; dy++) {");
+        appendLine(sb, "            if (dx != 0 || dy != 0) { g2d.setColor(outline); g2d.drawString(label, tx + dx, ty + dy) }");
+        appendLine(sb, "        }");
+        appendLine(sb, "    }");
+        appendLine(sb, "    g2d.setColor(primary)");
+        appendLine(sb, "    g2d.drawString(label, tx, ty)");
+        appendLine(sb, "}");
+        appendLine(sb, "");
+    }
+
+    /**
+     * Emit per-image info label template resolution and drawing code.
+     * Resolves template placeholders ({imageName}, {pixelSize}, etc.) from imageData.
+     */
+    private static void emitInfoLabelDrawing(StringBuilder sb) {
+        appendLine(sb, "        if (showInfoLabel && infoLabelTemplate != null) {");
+        appendLine(sb, "            def infoText = infoLabelTemplate");
+        appendLine(sb, "            infoText = infoText.replace('{imageName}', entryName ?: '')");
+        appendLine(sb, "            def cal = imageData.getServer().getPixelCalibration()");
+        appendLine(sb, "            def pxStr = cal.hasPixelSizeMicrons() ? String.format('%.3f um/px', cal.getAveragedPixelSizeMicrons()) : 'uncalibrated'");
+        appendLine(sb, "            infoText = infoText.replace('{pixelSize}', pxStr)");
+        appendLine(sb, "            infoText = infoText.replace('{date}', java.time.LocalDate.now().toString())");
+        appendLine(sb, "            infoText = infoText.replace('{time}', java.time.LocalTime.now().format(java.time.format.DateTimeFormatter.ofPattern('HH:mm')))");
+        appendLine(sb, "            infoText = infoText.replace('{width}', String.valueOf(imageData.getServer().getWidth()))");
+        appendLine(sb, "            infoText = infoText.replace('{height}', String.valueOf(imageData.getServer().getHeight()))");
+        appendLine(sb, "            infoText = infoText.replace('{classifier}', classifierName ?: '')");
+        appendLine(sb, "            g2d.setComposite(java.awt.AlphaComposite.getInstance(java.awt.AlphaComposite.SRC_OVER, 1.0f))");
+        appendLine(sb, "            drawInfoLabel(g2d, outW, outH, infoText, infoLabelPosition, infoLabelFontSize, infoLabelBold)");
+        appendLine(sb, "        }");
+    }
+
+    /**
+     * Emit per-image info label drawing for object overlay scripts (no classifierName variable).
+     */
+    private static void emitInfoLabelDrawingNoClassifier(StringBuilder sb) {
+        appendLine(sb, "        if (showInfoLabel && infoLabelTemplate != null) {");
+        appendLine(sb, "            def infoText = infoLabelTemplate");
+        appendLine(sb, "            infoText = infoText.replace('{imageName}', entryName ?: '')");
+        appendLine(sb, "            def cal = imageData.getServer().getPixelCalibration()");
+        appendLine(sb, "            def pxStr = cal.hasPixelSizeMicrons() ? String.format('%.3f um/px', cal.getAveragedPixelSizeMicrons()) : 'uncalibrated'");
+        appendLine(sb, "            infoText = infoText.replace('{pixelSize}', pxStr)");
+        appendLine(sb, "            infoText = infoText.replace('{date}', java.time.LocalDate.now().toString())");
+        appendLine(sb, "            infoText = infoText.replace('{time}', java.time.LocalTime.now().format(java.time.format.DateTimeFormatter.ofPattern('HH:mm')))");
+        appendLine(sb, "            infoText = infoText.replace('{width}', String.valueOf(imageData.getServer().getWidth()))");
+        appendLine(sb, "            infoText = infoText.replace('{height}', String.valueOf(imageData.getServer().getHeight()))");
+        appendLine(sb, "            infoText = infoText.replace('{classifier}', '')");
+        appendLine(sb, "            g2d.setComposite(java.awt.AlphaComposite.getInstance(java.awt.AlphaComposite.SRC_OVER, 1.0f))");
+        appendLine(sb, "            drawInfoLabel(g2d, outW, outH, infoText, infoLabelPosition, infoLabelFontSize, infoLabelBold)");
+        appendLine(sb, "        }");
+    }
+
+    /**
+     * Emit per-annotation info label drawing code.
+     */
+    private static void emitAnnotationInfoLabelDrawing(StringBuilder sb, boolean hasClassifier) {
+        appendLine(sb, "            if (showInfoLabel && infoLabelTemplate != null) {");
+        appendLine(sb, "                def infoText = infoLabelTemplate");
+        appendLine(sb, "                infoText = infoText.replace('{imageName}', entryName ?: '')");
+        appendLine(sb, "                def cal = imageData.getServer().getPixelCalibration()");
+        appendLine(sb, "                def pxStr = cal.hasPixelSizeMicrons() ? String.format('%.3f um/px', cal.getAveragedPixelSizeMicrons()) : 'uncalibrated'");
+        appendLine(sb, "                infoText = infoText.replace('{pixelSize}', pxStr)");
+        appendLine(sb, "                infoText = infoText.replace('{date}', java.time.LocalDate.now().toString())");
+        appendLine(sb, "                infoText = infoText.replace('{time}', java.time.LocalTime.now().format(java.time.format.DateTimeFormatter.ofPattern('HH:mm')))");
+        appendLine(sb, "                infoText = infoText.replace('{width}', String.valueOf(imageData.getServer().getWidth()))");
+        appendLine(sb, "                infoText = infoText.replace('{height}', String.valueOf(imageData.getServer().getHeight()))");
+        appendLine(sb, "                infoText = infoText.replace('{classifier}', " + (hasClassifier ? "classifierName ?: ''" : "''") + ")");
+        appendLine(sb, "                g2d.setComposite(java.awt.AlphaComposite.getInstance(java.awt.AlphaComposite.SRC_OVER, 1.0f))");
+        appendLine(sb, "                drawInfoLabel(g2d, outW, outH, infoText, infoLabelPosition, infoLabelFontSize, infoLabelBold)");
+        appendLine(sb, "            }");
+    }
+
+    // ------------------------------------------------------------------
+    // DPI / downsample helpers
+    // ------------------------------------------------------------------
+
+    /**
+     * Emit DPI configuration and per-image downsample resolution.
+     * When targetDpi > 0, computes downsample from pixel calibration each image.
+     */
+    private static void emitDpiConfig(StringBuilder sb, RenderedExportConfig config) {
+        int dpi = config.getTargetDpi();
+        appendLine(sb, "def targetDpi = " + dpi);
+    }
+
+    /**
+     * Emit per-image DPI-based downsample resolution code.
+     * Must be placed inside the per-image try block, after imageData/baseServer are set.
+     * Overrides the `downsample` variable if DPI is configured and pixel size is available.
+     */
+    private static void emitPerImageDpiResolution(StringBuilder sb) {
+        appendLine(sb, "        if (targetDpi > 0) {");
+        appendLine(sb, "            def cal = imageData.getServer().getPixelCalibration()");
+        appendLine(sb, "            if (cal.hasPixelSizeMicrons()) {");
+        appendLine(sb, "                double targetPixelSize = 25400.0 / targetDpi");
+        appendLine(sb, "                downsample = Math.max(1.0, targetPixelSize / cal.getAveragedPixelSizeMicrons())");
+        appendLine(sb, "                println \"  DPI ${targetDpi} -> effective downsample: ${String.format('%.2f', downsample)}\"");
+        appendLine(sb, "            } else {");
+        appendLine(sb, "                println \"  WARNING: No pixel calibration -- using manual downsample ${downsample}\"");
+        appendLine(sb, "            }");
+        appendLine(sb, "        }");
+    }
+
+    // ------------------------------------------------------------------
+    // Inset/zoom helpers
+    // ------------------------------------------------------------------
+
+    /**
+     * Emit inset configuration variables.
+     */
+    private static void emitInsetConfig(StringBuilder sb, RenderedExportConfig config) {
+        appendLine(sb, "def showInset = " + config.inset().show());
+        appendLine(sb, "def insetSourceX = " + config.inset().sourceX());
+        appendLine(sb, "def insetSourceY = " + config.inset().sourceY());
+        appendLine(sb, "def insetSourceW = " + config.inset().sourceW());
+        appendLine(sb, "def insetSourceH = " + config.inset().sourceH());
+        appendLine(sb, "def insetMagnification = " + config.inset().magnification());
+        appendLine(sb, "def insetPosition = " + quote(config.inset().position().name()));
+        java.awt.Color frameColor = config.inset().frameColorAsAwt();
+        appendLine(sb, "def insetFrameR = " + frameColor.getRed());
+        appendLine(sb, "def insetFrameG = " + frameColor.getGreen());
+        appendLine(sb, "def insetFrameB = " + frameColor.getBlue());
+        appendLine(sb, "def insetFrameWidth = " + config.inset().frameWidth());
+        appendLine(sb, "def insetConnectingLines = " + config.inset().connectingLines());
+    }
+
+    /**
+     * Emit inset-specific imports (BasicStroke).
+     */
+    private static void emitInsetImports(StringBuilder sb) {
+        appendLine(sb, "import java.awt.BasicStroke");
+    }
+
+    /**
+     * Emit a self-contained drawInset Groovy function.
+     */
+    private static void emitInsetFunction(StringBuilder sb) {
+        appendLine(sb, "// Inset/zoom panel drawing function");
+        appendLine(sb, "def drawInset(BufferedImage fullImage, Graphics2D g2d, double srcX, double srcY, double srcW, double srcH, int mag, String pos, int fR, int fG, int fB, int fWidth, boolean lines) {");
+        appendLine(sb, "    int imgW = fullImage.getWidth()");
+        appendLine(sb, "    int imgH = fullImage.getHeight()");
+        appendLine(sb, "    if (imgW <= 0 || imgH <= 0) return");
+        appendLine(sb, "    int sx = (int) Math.round(srcX * imgW)");
+        appendLine(sb, "    int sy = (int) Math.round(srcY * imgH)");
+        appendLine(sb, "    int sw = (int) Math.round(srcW * imgW)");
+        appendLine(sb, "    int sh = (int) Math.round(srcH * imgH)");
+        appendLine(sb, "    sx = Math.max(0, Math.min(sx, imgW - 1))");
+        appendLine(sb, "    sy = Math.max(0, Math.min(sy, imgH - 1))");
+        appendLine(sb, "    sw = Math.max(1, Math.min(sw, imgW - sx))");
+        appendLine(sb, "    sh = Math.max(1, Math.min(sh, imgH - sy))");
+        appendLine(sb, "    if (sw < 10 || sh < 10) return");
+        appendLine(sb, "    mag = Math.max(2, Math.min(mag, 16))");
+        appendLine(sb, "    int inW = sw * mag; int inH = sh * mag");
+        appendLine(sb, "    if (inW > 2048 || inH > 2048) { mag = Math.max(2, 2048 / Math.max(sw, sh)); inW = sw * mag; inH = sh * mag }");
+        appendLine(sb, "    if (inW > imgW / 2 || inH > imgH / 2) { mag = Math.max(2, Math.min(imgW / 2, imgH / 2) / Math.max(sw, sh)); inW = sw * mag; inH = sh * mag }");
+        appendLine(sb, "    if (inW < 10 || inH < 10) return");
+        appendLine(sb, "    def cropped = fullImage.getSubimage(sx, sy, sw, sh)");
+        appendLine(sb, "    def magnified = new BufferedImage(inW, inH, BufferedImage.TYPE_INT_RGB)");
+        appendLine(sb, "    def mg = magnified.createGraphics()");
+        appendLine(sb, "    mg.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_NEAREST_NEIGHBOR)");
+        appendLine(sb, "    mg.drawImage(cropped, 0, 0, inW, inH, null); mg.dispose()");
+        appendLine(sb, "    int minDim = Math.min(imgW, imgH)");
+        appendLine(sb, "    int effectiveFW = fWidth > 0 ? fWidth : Math.max(2, minDim / 300)");
+        appendLine(sb, "    int margin = Math.max(10, minDim / 40)");
+        appendLine(sb, "    def color = new Color(fR, fG, fB)");
+        appendLine(sb, "    g2d.setColor(color)");
+        appendLine(sb, "    g2d.setStroke(new BasicStroke(effectiveFW))");
+        appendLine(sb, "    g2d.drawRect(sx, sy, sw, sh)");
+        appendLine(sb, "    int ix, iy");
+        appendLine(sb, "    switch (pos) {");
+        appendLine(sb, "        case 'LOWER_LEFT': ix = margin; iy = imgH - margin - inH; break");
+        appendLine(sb, "        case 'UPPER_LEFT': ix = margin; iy = margin; break");
+        appendLine(sb, "        case 'LOWER_RIGHT': ix = imgW - margin - inW; iy = imgH - margin - inH; break");
+        appendLine(sb, "        default: ix = imgW - margin - inW; iy = margin; break");
+        appendLine(sb, "    }");
+        appendLine(sb, "    g2d.drawImage(magnified, ix, iy, null)");
+        appendLine(sb, "    g2d.drawRect(ix, iy, inW, inH)");
+        appendLine(sb, "    if (lines) {");
+        appendLine(sb, "        float dashLen = Math.max(4, minDim / 100.0f)");
+        appendLine(sb, "        g2d.setStroke(new BasicStroke(Math.max(1, effectiveFW / 2), BasicStroke.CAP_BUTT, BasicStroke.JOIN_MITER, 10.0f, [dashLen, dashLen] as float[], 0.0f))");
+        appendLine(sb, "        int scx = sx + sw / 2; int scy = sy + sh / 2");
+        appendLine(sb, "        int icx = ix + inW / 2; int icy = iy + inH / 2");
+        appendLine(sb, "        if (icx > scx) {");
+        appendLine(sb, "            if (icy > scy) { g2d.drawLine(sx + sw, sy + sh, ix, iy); g2d.drawLine(sx + sw, sy, ix, iy) }");
+        appendLine(sb, "            else { g2d.drawLine(sx + sw, sy, ix, iy + inH); g2d.drawLine(sx + sw, sy + sh, ix, iy + inH) }");
+        appendLine(sb, "        } else {");
+        appendLine(sb, "            if (icy > scy) { g2d.drawLine(sx, sy + sh, ix + inW, iy); g2d.drawLine(sx, sy, ix + inW, iy) }");
+        appendLine(sb, "            else { g2d.drawLine(sx, sy, ix + inW, iy + inH); g2d.drawLine(sx, sy + sh, ix + inW, iy + inH) }");
+        appendLine(sb, "        }");
+        appendLine(sb, "    }");
+        appendLine(sb, "}");
+        appendLine(sb, "");
+    }
+
+    /**
+     * Emit per-image inset drawing code (after g2d overlays, using result BufferedImage).
+     */
+    private static void emitInsetDrawing(StringBuilder sb) {
+        appendLine(sb, "        if (showInset) {");
+        appendLine(sb, "            g2d.setComposite(java.awt.AlphaComposite.getInstance(java.awt.AlphaComposite.SRC_OVER, 1.0f))");
+        appendLine(sb, "            drawInset(result, g2d, insetSourceX, insetSourceY, insetSourceW, insetSourceH, insetMagnification, insetPosition, insetFrameR, insetFrameG, insetFrameB, insetFrameWidth, insetConnectingLines)");
+        appendLine(sb, "        }");
+    }
+
+    /**
+     * Emit per-annotation inset drawing code.
+     */
+    private static void emitAnnotationInsetDrawing(StringBuilder sb) {
+        appendLine(sb, "            if (showInset) {");
+        appendLine(sb, "                g2d.setComposite(java.awt.AlphaComposite.getInstance(java.awt.AlphaComposite.SRC_OVER, 1.0f))");
+        appendLine(sb, "                drawInset(result, g2d, insetSourceX, insetSourceY, insetSourceW, insetSourceH, insetMagnification, insetPosition, insetFrameR, insetFrameG, insetFrameB, insetFrameWidth, insetConnectingLines)");
         appendLine(sb, "            }");
     }
 
@@ -549,17 +887,167 @@ class RenderedScriptGenerator {
     }
 
     /**
-     * Emit per-annotation file writing and loop close.
+     * Emit per-annotation file writing, optional split-channel loop, and loop close.
      */
-    private static void emitAnnotationLoopClose(StringBuilder sb) {
+    private static void emitAnnotationLoopClose(StringBuilder sb, RenderedExportConfig config) {
+        String fileLabel = config.splitChannel().enabled() ? "_merge" : "";
         appendLine(sb, "            g2d.dispose()");
         appendLine(sb, "");
         appendLine(sb, "            def sanitized = entryName.replaceAll('[^a-zA-Z0-9._\\\\-]', '_')");
-        appendLine(sb, "            def outputPath = new File(outDir, sanitized + suffix + '.' + outputFormat).getAbsolutePath()");
+        appendLine(sb, "            def outputPath = new File(outDir, sanitized + suffix + '" + fileLabel + ".' + outputFormat).getAbsolutePath()");
         appendLine(sb, "            ImageWriterTools.writeImage(result, outputPath)");
         appendLine(sb, "            println \"  OK: ${outputPath}\"");
+        if (config.splitChannel().enabled() && config.getDisplaySettingsMode() != DisplaySettingsMode.RAW) {
+            emitSplitChannelAnnotationLoop(sb);
+        }
         appendLine(sb, "        } // end annotation loop");
         appendLine(sb, "        succeeded++");
+    }
+
+    // ------------------------------------------------------------------
+    // Split-channel helpers
+    // ------------------------------------------------------------------
+
+    /**
+     * Emit split-channel configuration variables.
+     */
+    private static void emitSplitChannelConfig(StringBuilder sb, RenderedExportConfig config) {
+        if (!config.splitChannel().enabled()) return;
+        appendLine(sb, "def splitChannels = true");
+        appendLine(sb, "def splitChannelsGrayscale = " + config.splitChannel().grayscale());
+        appendLine(sb, "def splitChannelColorBorder = " + config.splitChannel().colorBorder());
+        appendLine(sb, "def channelColorLegend = " + config.splitChannel().colorLegend());
+    }
+
+    /**
+     * Emit additional imports needed for split-channel export.
+     */
+    private static void emitSplitChannelImports(StringBuilder sb, RenderedExportConfig config) {
+        if (!config.splitChannel().enabled()) return;
+        appendLine(sb, "import qupath.lib.common.GeneralTools");
+        // Color/Font may already be imported for scale bar; duplicate imports are harmless in Groovy
+        appendLine(sb, "import java.awt.Color");
+        appendLine(sb, "import java.awt.Font");
+    }
+
+    /**
+     * Emit helper functions for split-channel export (grayscale conversion,
+     * color border, color legend).
+     */
+    private static void emitSplitChannelHelperFunctions(StringBuilder sb, RenderedExportConfig config) {
+        if (!config.splitChannel().enabled()) return;
+
+        appendLine(sb, "// Convert image to grayscale");
+        appendLine(sb, "def convertToGrayscale(BufferedImage src) {");
+        appendLine(sb, "    def gray = new BufferedImage(src.getWidth(), src.getHeight(), BufferedImage.TYPE_BYTE_GRAY)");
+        appendLine(sb, "    def g = gray.createGraphics()");
+        appendLine(sb, "    g.drawImage(src, 0, 0, null)");
+        appendLine(sb, "    g.dispose()");
+        appendLine(sb, "    return gray");
+        appendLine(sb, "}");
+        appendLine(sb, "");
+
+        appendLine(sb, "// Draw channel color border around image");
+        appendLine(sb, "def drawChannelColorBorder(Graphics2D g2d, int imgW, int imgH, int chColor) {");
+        appendLine(sb, "    int bw = Math.max(2, Math.min(imgW, imgH) / 100)");
+        appendLine(sb, "    g2d.setColor(new Color(chColor))");
+        appendLine(sb, "    g2d.fillRect(0, 0, imgW, bw)");
+        appendLine(sb, "    g2d.fillRect(0, imgH - bw, imgW, bw)");
+        appendLine(sb, "    g2d.fillRect(0, 0, bw, imgH)");
+        appendLine(sb, "    g2d.fillRect(imgW - bw, 0, bw, imgH)");
+        appendLine(sb, "}");
+        appendLine(sb, "");
+
+        appendLine(sb, "// Draw channel color legend (swatch + name) in upper-left");
+        appendLine(sb, "def drawChannelColorLegend(Graphics2D g2d, int imgW, int imgH, String chName, int chColor) {");
+        appendLine(sb, "    int minDim = Math.min(imgW, imgH)");
+        appendLine(sb, "    int fontSize = Math.max(12, minDim / 30)");
+        appendLine(sb, "    int margin = Math.max(8, minDim / 50)");
+        appendLine(sb, "    int swatchSize = fontSize");
+        appendLine(sb, "    g2d.setFont(new Font(Font.SANS_SERIF, Font.BOLD, fontSize))");
+        appendLine(sb, "    def fm = g2d.getFontMetrics()");
+        appendLine(sb, "    int textX = margin + swatchSize + 4");
+        appendLine(sb, "    int textY = margin + fm.getAscent()");
+        appendLine(sb, "    g2d.setColor(new Color(chColor))");
+        appendLine(sb, "    g2d.fillRect(margin, margin, swatchSize, swatchSize)");
+        appendLine(sb, "    g2d.setColor(Color.WHITE)");
+        appendLine(sb, "    g2d.drawRect(margin, margin, swatchSize, swatchSize)");
+        appendLine(sb, "    for (int dx = -1; dx <= 1; dx++) {");
+        appendLine(sb, "        for (int dy = -1; dy <= 1; dy++) {");
+        appendLine(sb, "            if (dx != 0 || dy != 0) { g2d.setColor(Color.BLACK); g2d.drawString(chName, textX + dx, textY + dy) }");
+        appendLine(sb, "        }");
+        appendLine(sb, "    }");
+        appendLine(sb, "    g2d.setColor(Color.WHITE)");
+        appendLine(sb, "    g2d.drawString(chName, textX, textY)");
+        appendLine(sb, "}");
+        appendLine(sb, "");
+    }
+
+    /**
+     * Emit the per-channel export loop for whole-image split-channel export.
+     * Must be called after the merge image has been written.
+     * Requires: display, baseServer, downsample, sanitized, outputFormat, outDir in scope.
+     */
+    private static void emitSplitChannelWholeImageLoop(StringBuilder sb) {
+        appendLine(sb, "");
+        appendLine(sb, "        // --- Per-channel split export ---");
+        appendLine(sb, "        def splitChannelList = display.selectedChannels()");
+        appendLine(sb, "        def chMetadata = baseServer.getMetadata().getChannels()");
+        appendLine(sb, "        for (int ch = 0; ch < splitChannelList.size(); ch++) {");
+        appendLine(sb, "            def singleCh = [splitChannelList[ch]]");
+        appendLine(sb, "            def chServer = ChannelDisplayTransformServer.createColorTransformServer(baseServer, singleCh)");
+        appendLine(sb, "            def chRequest = RegionRequest.createInstance(chServer.getPath(), downsample, 0, 0, chServer.getWidth(), chServer.getHeight())");
+        appendLine(sb, "            def chImg = chServer.readRegion(chRequest)");
+        appendLine(sb, "            if (splitChannelsGrayscale) { chImg = convertToGrayscale(chImg) }");
+        appendLine(sb, "            def chResult = new BufferedImage(chImg.getWidth(), chImg.getHeight(), BufferedImage.TYPE_INT_RGB)");
+        appendLine(sb, "            def chG2d = chResult.createGraphics()");
+        appendLine(sb, "            chG2d.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_BILINEAR)");
+        appendLine(sb, "            chG2d.drawImage(chImg, 0, 0, null)");
+        appendLine(sb, "            def chColor = chMetadata[ch].getColor()");
+        appendLine(sb, "            if (splitChannelColorBorder) { drawChannelColorBorder(chG2d, chResult.getWidth(), chResult.getHeight(), chColor) }");
+        appendLine(sb, "            if (channelColorLegend) { drawChannelColorLegend(chG2d, chResult.getWidth(), chResult.getHeight(), chMetadata[ch].getName(), chColor) }");
+        appendLine(sb, "            chG2d.dispose()");
+        appendLine(sb, "            def chName = GeneralTools.stripInvalidFilenameChars(chMetadata[ch].getName())");
+        appendLine(sb, "            if (chName == null || chName.isBlank()) chName = 'ch' + ch");
+        appendLine(sb, "            def chPath = new File(outDir, sanitized + '_Ch' + (ch + 1) + '_' + chName + '.' + outputFormat).getAbsolutePath()");
+        appendLine(sb, "            ImageWriterTools.writeImage(chResult, chPath)");
+        appendLine(sb, "            println \"    Channel ${ch + 1}: ${chPath}\"");
+        appendLine(sb, "            chServer.close()");
+        appendLine(sb, "        }");
+    }
+
+    /**
+     * Emit the per-channel export loop for per-annotation split-channel export.
+     * Must be called inside the annotation loop, after the merge image has been written.
+     * Requires: display, baseServer, downsample, sanitized, suffix, outputFormat, outDir,
+     * ax, ay, aw, ah in scope.
+     */
+    private static void emitSplitChannelAnnotationLoop(StringBuilder sb) {
+        appendLine(sb, "");
+        appendLine(sb, "            // --- Per-channel split export ---");
+        appendLine(sb, "            def splitChannelList = display.selectedChannels()");
+        appendLine(sb, "            def chMetadata = baseServer.getMetadata().getChannels()");
+        appendLine(sb, "            for (int ch = 0; ch < splitChannelList.size(); ch++) {");
+        appendLine(sb, "                def singleCh = [splitChannelList[ch]]");
+        appendLine(sb, "                def chServer = ChannelDisplayTransformServer.createColorTransformServer(baseServer, singleCh)");
+        appendLine(sb, "                def chRequest = RegionRequest.createInstance(chServer.getPath(), downsample, ax, ay, aw, ah)");
+        appendLine(sb, "                def chImg = chServer.readRegion(chRequest)");
+        appendLine(sb, "                if (splitChannelsGrayscale) { chImg = convertToGrayscale(chImg) }");
+        appendLine(sb, "                def chResult = new BufferedImage(chImg.getWidth(), chImg.getHeight(), BufferedImage.TYPE_INT_RGB)");
+        appendLine(sb, "                def chG2d = chResult.createGraphics()");
+        appendLine(sb, "                chG2d.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_BILINEAR)");
+        appendLine(sb, "                chG2d.drawImage(chImg, 0, 0, null)");
+        appendLine(sb, "                def chColor = chMetadata[ch].getColor()");
+        appendLine(sb, "                if (splitChannelColorBorder) { drawChannelColorBorder(chG2d, chResult.getWidth(), chResult.getHeight(), chColor) }");
+        appendLine(sb, "                if (channelColorLegend) { drawChannelColorLegend(chG2d, chResult.getWidth(), chResult.getHeight(), chMetadata[ch].getName(), chColor) }");
+        appendLine(sb, "                chG2d.dispose()");
+        appendLine(sb, "                def chName = GeneralTools.stripInvalidFilenameChars(chMetadata[ch].getName())");
+        appendLine(sb, "                if (chName == null || chName.isBlank()) chName = 'ch' + ch");
+        appendLine(sb, "                def chPath = new File(outDir, sanitized + suffix + '_Ch' + (ch + 1) + '_' + chName + '.' + outputFormat).getAbsolutePath()");
+        appendLine(sb, "                ImageWriterTools.writeImage(chResult, chPath)");
+        appendLine(sb, "                println \"      Channel ${ch + 1}: ${chPath}\"");
+        appendLine(sb, "                chServer.close()");
+        appendLine(sb, "            }");
     }
 
     // ------------------------------------------------------------------
@@ -601,9 +1089,13 @@ class RenderedScriptGenerator {
         appendLine(sb, "import java.awt.RenderingHints");
         appendLine(sb, "import java.awt.image.BufferedImage");
         emitDisplayImports(sb, displayMode);
-        if (config.isShowScaleBar()) {
+        if (config.scaleBar().show() || config.infoLabel().show()) {
             emitScaleBarImports(sb);
         }
+        if (config.inset().show()) {
+            emitInsetImports(sb);
+        }
+        emitSplitChannelImports(sb, config);
         if (perAnnotation) {
             emitPerAnnotationImports(sb);
         }
@@ -611,21 +1103,25 @@ class RenderedScriptGenerator {
 
         // Configuration parameters
         appendLine(sb, "// ========== CONFIGURATION (modify as needed) ==========");
-        appendLine(sb, "def densityMapName = " + quote(config.getDensityMapName()));
-        appendLine(sb, "def colormapName = " + quote(config.getColormapName()));
+        appendLine(sb, "def densityMapName = " + quote(config.overlays().densityMapName()));
+        appendLine(sb, "def colormapName = " + quote(config.overlays().colormapName()));
         emitRegionTypeConfig(sb, config);
         emitDisplayConfig(sb, config);
+        emitSplitChannelConfig(sb, config);
         appendLine(sb, "def overlayOpacity = " + config.getOverlayOpacity());
         appendLine(sb, "def downsample = " + config.getDownsample());
+        emitDpiConfig(sb, config);
         emitOutputFormat(sb, config);
         appendLine(sb, "def outputDir = " + quote(config.getOutputDirectory().getAbsolutePath()));
-        appendLine(sb, "def includeAnnotations = " + config.isIncludeAnnotations());
-        appendLine(sb, "def includeDetections = " + config.isIncludeDetections());
-        appendLine(sb, "def fillAnnotations = " + config.isFillAnnotations());
-        appendLine(sb, "def showNames = " + config.isShowNames());
+        appendLine(sb, "def includeAnnotations = " + config.overlays().includeAnnotations());
+        appendLine(sb, "def includeDetections = " + config.overlays().includeDetections());
+        appendLine(sb, "def fillAnnotations = " + config.overlays().fillAnnotations());
+        appendLine(sb, "def showNames = " + config.overlays().showNames());
         emitScaleBarConfig(sb, config);
         emitColorScaleBarConfig(sb, config);
         emitPanelLabelConfig(sb, config);
+        emitInfoLabelConfig(sb, config);
+        emitInsetConfig(sb, config);
         appendLine(sb, "// =======================================================");
         appendLine(sb, "");
 
@@ -668,15 +1164,22 @@ class RenderedScriptGenerator {
 
         // Helper functions (before the main loop)
         emitColorizeDensityMapFunction(sb);
-        if (config.isShowScaleBar()) {
+        if (config.scaleBar().show()) {
             emitScaleBarFunction(sb);
         }
-        if (config.isShowColorScaleBar()) {
+        if (config.colorScaleBar().show()) {
             emitColorScaleBarFunction(sb);
         }
-        if (config.isShowPanelLabel()) {
+        if (config.panelLabel().show()) {
             emitPanelLabelFunction(sb);
         }
+        if (config.infoLabel().show()) {
+            emitInfoLabelFunction(sb);
+        }
+        if (config.inset().show()) {
+            emitInsetFunction(sb);
+        }
+        emitSplitChannelHelperFunctions(sb, config);
 
         // Main processing loop
         appendLine(sb, "def entries = project.getImageList()");
@@ -695,6 +1198,10 @@ class RenderedScriptGenerator {
         appendLine(sb, "        def imageData = entry.readImageData()");
         appendLine(sb, "        def baseServer = imageData.getServer()");
         appendLine(sb, "");
+        if (config.getTargetDpi() > 0) {
+            emitPerImageDpiResolution(sb);
+            appendLine(sb, "");
+        }
 
         // Display server wrapping
         emitDisplayServerWrapping(sb, displayMode);
@@ -742,11 +1249,11 @@ class RenderedScriptGenerator {
             appendLine(sb, "");
             emitAnnotationObjectOverlay(sb);
             appendLine(sb, "");
-            if (config.isShowScaleBar()) {
+            if (config.scaleBar().show()) {
                 emitAnnotationScaleBarDrawing(sb);
                 appendLine(sb, "");
             }
-            if (config.isShowColorScaleBar()) {
+            if (config.colorScaleBar().show()) {
                 // Color scale bar at annotation level (uses outW, outH from annotation region read)
                 appendLine(sb, "            if (showColorScaleBar) {");
                 appendLine(sb, "                g2d.setComposite(java.awt.AlphaComposite.getInstance(java.awt.AlphaComposite.SRC_OVER, 1.0f))");
@@ -754,11 +1261,19 @@ class RenderedScriptGenerator {
                 appendLine(sb, "            }");
                 appendLine(sb, "");
             }
-            if (config.isShowPanelLabel()) {
+            if (config.panelLabel().show()) {
                 emitAnnotationPanelLabelDrawing(sb);
                 appendLine(sb, "");
             }
-            emitAnnotationLoopClose(sb);
+            if (config.infoLabel().show()) {
+                emitAnnotationInfoLabelDrawing(sb, false);
+                appendLine(sb, "");
+            }
+            if (config.inset().show()) {
+                emitAnnotationInsetDrawing(sb);
+                appendLine(sb, "");
+            }
+            emitAnnotationLoopClose(sb, config);
         } else {
             // Whole-image density map rendering path (existing code)
             appendLine(sb, "        int outW = (int) Math.ceil(baseServer.getWidth() / downsample)");
@@ -825,24 +1340,36 @@ class RenderedScriptGenerator {
             appendLine(sb, "            gCopy.dispose()");
             appendLine(sb, "        }");
             appendLine(sb, "");
-            if (config.isShowScaleBar()) {
+            if (config.scaleBar().show()) {
                 emitScaleBarDrawing(sb);
                 appendLine(sb, "");
             }
-            if (config.isShowColorScaleBar()) {
+            if (config.colorScaleBar().show()) {
                 emitColorScaleBarDrawing(sb);
                 appendLine(sb, "");
             }
-            if (config.isShowPanelLabel()) {
+            if (config.panelLabel().show()) {
                 emitPanelLabelDrawing(sb);
+                appendLine(sb, "");
+            }
+            if (config.infoLabel().show()) {
+                emitInfoLabelDrawingNoClassifier(sb);
+                appendLine(sb, "");
+            }
+            if (config.inset().show()) {
+                emitInsetDrawing(sb);
                 appendLine(sb, "");
             }
             appendLine(sb, "        g2d.dispose()");
             appendLine(sb, "");
             appendLine(sb, "        def sanitized = entryName.replaceAll('[^a-zA-Z0-9._\\\\-]', '_')");
-            appendLine(sb, "        def outputPath = new File(outDir, sanitized + '.' + outputFormat).getAbsolutePath()");
+            String densityFileLabel = config.splitChannel().enabled() ? "_merge" : "";
+            appendLine(sb, "        def outputPath = new File(outDir, sanitized + '" + densityFileLabel + ".' + outputFormat).getAbsolutePath()");
             appendLine(sb, "        ImageWriterTools.writeImage(result, outputPath)");
             appendLine(sb, "        println \"  OK: ${outputPath}\"");
+            if (config.splitChannel().enabled() && displayMode != DisplaySettingsMode.RAW) {
+                emitSplitChannelWholeImageLoop(sb);
+            }
             appendLine(sb, "        succeeded++");
         }
 
@@ -897,9 +1424,13 @@ class RenderedScriptGenerator {
         appendLine(sb, "import java.awt.RenderingHints");
         appendLine(sb, "import java.awt.image.BufferedImage");
         emitDisplayImports(sb, displayMode);
-        if (config.isShowScaleBar()) {
+        if (config.scaleBar().show() || config.infoLabel().show()) {
             emitScaleBarImports(sb);
         }
+        if (config.inset().show()) {
+            emitInsetImports(sb);
+        }
+        emitSplitChannelImports(sb, config);
         if (perAnnotation) {
             emitPerAnnotationImports(sb);
         }
@@ -907,19 +1438,23 @@ class RenderedScriptGenerator {
 
         // Configuration parameters
         appendLine(sb, "// ========== CONFIGURATION (modify as needed) ==========");
-        appendLine(sb, "def classifierName = " + quote(config.getClassifierName()));
+        appendLine(sb, "def classifierName = " + quote(config.overlays().classifierName()));
         emitRegionTypeConfig(sb, config);
         emitDisplayConfig(sb, config);
+        emitSplitChannelConfig(sb, config);
         appendLine(sb, "def overlayOpacity = " + config.getOverlayOpacity());
         appendLine(sb, "def downsample = " + config.getDownsample());
+        emitDpiConfig(sb, config);
         emitOutputFormat(sb, config);
         appendLine(sb, "def outputDir = " + quote(config.getOutputDirectory().getAbsolutePath()));
-        appendLine(sb, "def includeAnnotations = " + config.isIncludeAnnotations());
-        appendLine(sb, "def includeDetections = " + config.isIncludeDetections());
-        appendLine(sb, "def fillAnnotations = " + config.isFillAnnotations());
-        appendLine(sb, "def showNames = " + config.isShowNames());
+        appendLine(sb, "def includeAnnotations = " + config.overlays().includeAnnotations());
+        appendLine(sb, "def includeDetections = " + config.overlays().includeDetections());
+        appendLine(sb, "def fillAnnotations = " + config.overlays().fillAnnotations());
+        appendLine(sb, "def showNames = " + config.overlays().showNames());
         emitScaleBarConfig(sb, config);
         emitPanelLabelConfig(sb, config);
+        emitInfoLabelConfig(sb, config);
+        emitInsetConfig(sb, config);
         appendLine(sb, "// =======================================================");
         appendLine(sb, "");
 
@@ -945,13 +1480,20 @@ class RenderedScriptGenerator {
         appendLine(sb, "outDir.mkdirs()");
         appendLine(sb, "");
 
-        // Scale bar function (before the main loop)
-        if (config.isShowScaleBar()) {
+        // Helper functions (before the main loop)
+        if (config.scaleBar().show()) {
             emitScaleBarFunction(sb);
         }
-        if (config.isShowPanelLabel()) {
+        if (config.panelLabel().show()) {
             emitPanelLabelFunction(sb);
         }
+        if (config.infoLabel().show()) {
+            emitInfoLabelFunction(sb);
+        }
+        if (config.inset().show()) {
+            emitInsetFunction(sb);
+        }
+        emitSplitChannelHelperFunctions(sb, config);
 
         // Main processing loop
         appendLine(sb, "def entries = project.getImageList()");
@@ -978,6 +1520,10 @@ class RenderedScriptGenerator {
         appendLine(sb, "            continue");
         appendLine(sb, "        }");
         appendLine(sb, "");
+        if (config.getTargetDpi() > 0) {
+            emitPerImageDpiResolution(sb);
+            appendLine(sb, "");
+        }
 
         // Display server wrapping
         emitDisplayServerWrapping(sb, displayMode);
@@ -1005,15 +1551,23 @@ class RenderedScriptGenerator {
             appendLine(sb, "");
             emitAnnotationObjectOverlay(sb);
             appendLine(sb, "");
-            if (config.isShowScaleBar()) {
+            if (config.scaleBar().show()) {
                 emitAnnotationScaleBarDrawing(sb);
                 appendLine(sb, "");
             }
-            if (config.isShowPanelLabel()) {
+            if (config.panelLabel().show()) {
                 emitAnnotationPanelLabelDrawing(sb);
                 appendLine(sb, "");
             }
-            emitAnnotationLoopClose(sb);
+            if (config.infoLabel().show()) {
+                emitAnnotationInfoLabelDrawing(sb, true);
+                appendLine(sb, "");
+            }
+            if (config.inset().show()) {
+                emitAnnotationInsetDrawing(sb);
+                appendLine(sb, "");
+            }
+            emitAnnotationLoopClose(sb, config);
         } else {
             // Whole-image classifier rendering path (existing code)
             appendLine(sb, "        int outW = (int) Math.ceil(baseServer.getWidth() / downsample)");
@@ -1063,20 +1617,32 @@ class RenderedScriptGenerator {
             appendLine(sb, "            gCopy.dispose()");
             appendLine(sb, "        }");
             appendLine(sb, "");
-            if (config.isShowScaleBar()) {
+            if (config.scaleBar().show()) {
                 emitScaleBarDrawing(sb);
                 appendLine(sb, "");
             }
-            if (config.isShowPanelLabel()) {
+            if (config.panelLabel().show()) {
                 emitPanelLabelDrawing(sb);
+                appendLine(sb, "");
+            }
+            if (config.infoLabel().show()) {
+                emitInfoLabelDrawing(sb);
+                appendLine(sb, "");
+            }
+            if (config.inset().show()) {
+                emitInsetDrawing(sb);
                 appendLine(sb, "");
             }
             appendLine(sb, "        g2d.dispose()");
             appendLine(sb, "");
             appendLine(sb, "        def sanitized = entryName.replaceAll('[^a-zA-Z0-9._\\\\-]', '_')");
-            appendLine(sb, "        def outputPath = new File(outDir, sanitized + '.' + outputFormat).getAbsolutePath()");
+            String classFileLabel = config.splitChannel().enabled() ? "_merge" : "";
+            appendLine(sb, "        def outputPath = new File(outDir, sanitized + '" + classFileLabel + ".' + outputFormat).getAbsolutePath()");
             appendLine(sb, "        ImageWriterTools.writeImage(result, outputPath)");
             appendLine(sb, "        println \"  OK: ${outputPath}\"");
+            if (config.splitChannel().enabled() && displayMode != DisplaySettingsMode.RAW) {
+                emitSplitChannelWholeImageLoop(sb);
+            }
             appendLine(sb, "        succeeded++");
         }
 
@@ -1130,9 +1696,13 @@ class RenderedScriptGenerator {
         appendLine(sb, "import java.awt.RenderingHints");
         appendLine(sb, "import java.awt.image.BufferedImage");
         emitDisplayImports(sb, displayMode);
-        if (config.isShowScaleBar()) {
+        if (config.scaleBar().show() || config.infoLabel().show()) {
             emitScaleBarImports(sb);
         }
+        if (config.inset().show()) {
+            emitInsetImports(sb);
+        }
+        emitSplitChannelImports(sb, config);
         if (perAnnotation) {
             emitPerAnnotationImports(sb);
         }
@@ -1142,16 +1712,20 @@ class RenderedScriptGenerator {
         appendLine(sb, "// ========== CONFIGURATION (modify as needed) ==========");
         emitRegionTypeConfig(sb, config);
         emitDisplayConfig(sb, config);
+        emitSplitChannelConfig(sb, config);
         appendLine(sb, "def overlayOpacity = " + config.getOverlayOpacity());
         appendLine(sb, "def downsample = " + config.getDownsample());
+        emitDpiConfig(sb, config);
         emitOutputFormat(sb, config);
         appendLine(sb, "def outputDir = " + quote(config.getOutputDirectory().getAbsolutePath()));
-        appendLine(sb, "def includeAnnotations = " + config.isIncludeAnnotations());
-        appendLine(sb, "def includeDetections = " + config.isIncludeDetections());
-        appendLine(sb, "def fillAnnotations = " + config.isFillAnnotations());
-        appendLine(sb, "def showNames = " + config.isShowNames());
+        appendLine(sb, "def includeAnnotations = " + config.overlays().includeAnnotations());
+        appendLine(sb, "def includeDetections = " + config.overlays().includeDetections());
+        appendLine(sb, "def fillAnnotations = " + config.overlays().fillAnnotations());
+        appendLine(sb, "def showNames = " + config.overlays().showNames());
         emitScaleBarConfig(sb, config);
         emitPanelLabelConfig(sb, config);
+        emitInfoLabelConfig(sb, config);
+        emitInsetConfig(sb, config);
         appendLine(sb, "// =======================================================");
         appendLine(sb, "");
 
@@ -1171,13 +1745,20 @@ class RenderedScriptGenerator {
         appendLine(sb, "outDir.mkdirs()");
         appendLine(sb, "");
 
-        // Scale bar function (before the main loop)
-        if (config.isShowScaleBar()) {
+        // Helper functions (before the main loop)
+        if (config.scaleBar().show()) {
             emitScaleBarFunction(sb);
         }
-        if (config.isShowPanelLabel()) {
+        if (config.panelLabel().show()) {
             emitPanelLabelFunction(sb);
         }
+        if (config.infoLabel().show()) {
+            emitInfoLabelFunction(sb);
+        }
+        if (config.inset().show()) {
+            emitInsetFunction(sb);
+        }
+        emitSplitChannelHelperFunctions(sb, config);
 
         // Main processing loop
         appendLine(sb, "def entries = project.getImageList()");
@@ -1195,6 +1776,10 @@ class RenderedScriptGenerator {
         appendLine(sb, "        def imageData = entry.readImageData()");
         appendLine(sb, "        def baseServer = imageData.getServer()");
         appendLine(sb, "");
+        if (config.getTargetDpi() > 0) {
+            emitPerImageDpiResolution(sb);
+            appendLine(sb, "");
+        }
 
         // Display server wrapping
         emitDisplayServerWrapping(sb, displayMode);
@@ -1214,15 +1799,23 @@ class RenderedScriptGenerator {
             emitAnnotationObjectOverlay(sb);
             appendLine(sb, "            }");
             appendLine(sb, "");
-            if (config.isShowScaleBar()) {
+            if (config.scaleBar().show()) {
                 emitAnnotationScaleBarDrawing(sb);
                 appendLine(sb, "");
             }
-            if (config.isShowPanelLabel()) {
+            if (config.panelLabel().show()) {
                 emitAnnotationPanelLabelDrawing(sb);
                 appendLine(sb, "");
             }
-            emitAnnotationLoopClose(sb);
+            if (config.infoLabel().show()) {
+                emitAnnotationInfoLabelDrawing(sb, false);
+                appendLine(sb, "");
+            }
+            if (config.inset().show()) {
+                emitAnnotationInsetDrawing(sb);
+                appendLine(sb, "");
+            }
+            emitAnnotationLoopClose(sb, config);
         } else {
             // Whole-image rendering path (existing code)
             appendLine(sb, "        int outW = (int) Math.ceil(baseServer.getWidth() / downsample)");
@@ -1260,20 +1853,32 @@ class RenderedScriptGenerator {
             appendLine(sb, "            gCopy.dispose()");
             appendLine(sb, "        }");
             appendLine(sb, "");
-            if (config.isShowScaleBar()) {
+            if (config.scaleBar().show()) {
                 emitScaleBarDrawing(sb);
                 appendLine(sb, "");
             }
-            if (config.isShowPanelLabel()) {
+            if (config.panelLabel().show()) {
                 emitPanelLabelDrawing(sb);
+                appendLine(sb, "");
+            }
+            if (config.infoLabel().show()) {
+                emitInfoLabelDrawingNoClassifier(sb);
+                appendLine(sb, "");
+            }
+            if (config.inset().show()) {
+                emitInsetDrawing(sb);
                 appendLine(sb, "");
             }
             appendLine(sb, "        g2d.dispose()");
             appendLine(sb, "");
             appendLine(sb, "        def sanitized = entryName.replaceAll('[^a-zA-Z0-9._\\\\-]', '_')");
-            appendLine(sb, "        def outputPath = new File(outDir, sanitized + '.' + outputFormat).getAbsolutePath()");
+            String objFileLabel = config.splitChannel().enabled() ? "_merge" : "";
+            appendLine(sb, "        def outputPath = new File(outDir, sanitized + '" + objFileLabel + ".' + outputFormat).getAbsolutePath()");
             appendLine(sb, "        ImageWriterTools.writeImage(result, outputPath)");
             appendLine(sb, "        println \"  OK: ${outputPath}\"");
+            if (config.splitChannel().enabled() && displayMode != DisplaySettingsMode.RAW) {
+                emitSplitChannelWholeImageLoop(sb);
+            }
             appendLine(sb, "        succeeded++");
         }
 

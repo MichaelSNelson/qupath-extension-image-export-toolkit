@@ -13,6 +13,9 @@ import java.io.File;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
+import java.time.LocalDate;
+import java.time.LocalTime;
+import java.time.format.DateTimeFormatter;
 import java.util.Collection;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -110,7 +113,7 @@ public class RenderedImageExporter {
             } else {
                 BufferedImage result = renderClassifierComposite(
                         imageData, baseServer, classificationServer, displayServer,
-                        config, panelLabel);
+                        config, panelLabel, entryName);
                 ImageWriterTools.writeImage(result, outputFile.getAbsolutePath());
             }
 
@@ -158,7 +161,7 @@ public class RenderedImageExporter {
                 writeSvg(svg, outputFile);
             } else {
                 BufferedImage result = renderObjectComposite(
-                        imageData, baseServer, displayServer, config, panelLabel);
+                        imageData, baseServer, displayServer, config, panelLabel, entryName);
                 ImageWriterTools.writeImage(result, outputFile.getAbsolutePath());
             }
 
@@ -207,7 +210,7 @@ public class RenderedImageExporter {
             } else {
                 BufferedImage result = renderDensityMapComposite(
                         imageData, baseServer, densityServer, displayServer,
-                        config, panelLabel);
+                        config, panelLabel, entryName);
                 ImageWriterTools.writeImage(result, outputFile.getAbsolutePath());
             }
 
@@ -388,7 +391,7 @@ public class RenderedImageExporter {
             RenderedExportConfig config,
             int x, int y, int w, int h) throws Exception {
 
-        double downsample = config.getDownsample();
+        double downsample = resolveEffectiveDownsample(config, baseServer);
 
         // Read base image region
         ImageServer<BufferedImage> readServer =
@@ -426,7 +429,7 @@ public class RenderedImageExporter {
                     densityServer.getPath(), downsample, x, y, w, h);
             BufferedImage densityImage = densityServer.readRegion(densityRequest);
 
-            ColorMaps.ColorMap colorMap = resolveColorMap(config.getColormapName());
+            ColorMaps.ColorMap colorMap = resolveColorMap(config.overlays().colormapName());
             double[] minMax = computeMinMax(densityImage);
             BufferedImage colorized = colorizeDensityMap(
                     densityImage, colorMap, minMax[0], minMax[1]);
@@ -477,23 +480,49 @@ public class RenderedImageExporter {
             String panelLabel,
             double downsample,
             boolean skipObjectPainting) throws Exception {
+        drawVectorOverlays(g2d, imageData, densityServer, config,
+                regionX, regionY, regionW, regionH,
+                imageWidth, imageHeight, panelLabel, downsample,
+                skipObjectPainting, null, null);
+    }
+
+    /**
+     * Draw all vector-appropriate overlays onto a Graphics2D context.
+     *
+     * @param skipObjectPainting if true, skip painting objects (used when SVG vector
+     *                           objects are painted separately via paintObjectsAsSvg)
+     * @param resolvedInfoLabel  pre-resolved info label text (null if not applicable)
+     * @param entryName          image entry name for info label template resolution
+     */
+    private static void drawVectorOverlays(
+            Graphics2D g2d,
+            ImageData<BufferedImage> imageData,
+            ImageServer<BufferedImage> densityServer,
+            RenderedExportConfig config,
+            int regionX, int regionY, int regionW, int regionH,
+            int imageWidth, int imageHeight,
+            String panelLabel,
+            double downsample,
+            boolean skipObjectPainting,
+            String resolvedInfoLabel,
+            String entryName) throws Exception {
 
         // Paint object overlays with region offset (skip when done via SVG vector path)
-        if (!skipObjectPainting && (config.isIncludeAnnotations() || config.isIncludeDetections())) {
+        if (!skipObjectPainting && (config.overlays().includeAnnotations() || config.overlays().includeDetections())) {
             g2d.setComposite(AlphaComposite.getInstance(
                     AlphaComposite.SRC_OVER, 1.0f));
             paintObjectsInRegion(g2d, imageData, downsample,
                     regionX, regionY, regionW, regionH,
-                    config.isIncludeAnnotations(), config.isIncludeDetections(),
-                    config.isFillAnnotations(), config.isShowNames());
+                    config.overlays().includeAnnotations(), config.overlays().includeDetections(),
+                    config.overlays().fillAnnotations(), config.overlays().showNames());
         }
 
-        // Scale bar
-        maybeDrawScaleBar(g2d, imageData, config, imageWidth, imageHeight);
+        // Scale bar -- must use effective downsample for correct pixel size
+        maybeDrawScaleBar(g2d, imageData, config, imageWidth, imageHeight, downsample);
 
         // Color scale bar for density map mode
-        if (densityServer != null && config.isShowColorScaleBar()) {
-            ColorMaps.ColorMap colorMap = resolveColorMap(config.getColormapName());
+        if (densityServer != null && config.colorScaleBar().show()) {
+            ColorMaps.ColorMap colorMap = resolveColorMap(config.overlays().colormapName());
             RegionRequest densityRequest = RegionRequest.createInstance(
                     densityServer.getPath(), downsample,
                     regionX, regionY, regionW, regionH);
@@ -504,6 +533,14 @@ public class RenderedImageExporter {
         }
 
         maybeDrawPanelLabel(g2d, config, panelLabel, imageWidth, imageHeight);
+
+        // Info label (resolve template if not pre-resolved)
+        String infoText = resolvedInfoLabel;
+        if (infoText == null && config.infoLabel().show() && entryName != null) {
+            infoText = resolveInfoLabelTemplate(
+                    config.infoLabel().text(), entryName, imageData, config);
+        }
+        maybeDrawInfoLabel(g2d, config, infoText, imageWidth, imageHeight);
     }
 
     /**
@@ -519,10 +556,26 @@ public class RenderedImageExporter {
             RenderedExportConfig config,
             int x, int y, int w, int h,
             String panelLabel) throws Exception {
+        return renderRegion(imageData, baseServer, classificationServer, densityServer,
+                displayServer, config, x, y, w, h, panelLabel, null);
+    }
+
+    private static BufferedImage renderRegion(
+            ImageData<BufferedImage> imageData,
+            ImageServer<BufferedImage> baseServer,
+            PixelClassificationImageServer classificationServer,
+            ImageServer<BufferedImage> densityServer,
+            ImageServer<BufferedImage> displayServer,
+            RenderedExportConfig config,
+            int x, int y, int w, int h,
+            String panelLabel,
+            String entryName) throws Exception {
 
         BufferedImage raster = renderRasterLayers(
                 imageData, baseServer, classificationServer, densityServer,
                 displayServer, config, x, y, w, h);
+
+        double effectiveDs = resolveEffectiveDownsample(config, baseServer);
 
         Graphics2D g2d = raster.createGraphics();
         g2d.setRenderingHint(
@@ -532,7 +585,10 @@ public class RenderedImageExporter {
         drawVectorOverlays(g2d, imageData, densityServer, config,
                 x, y, w, h,
                 raster.getWidth(), raster.getHeight(),
-                panelLabel, config.getDownsample());
+                panelLabel, effectiveDs,
+                false, null, entryName);
+
+        maybeDrawInset(g2d, raster, config);
 
         g2d.dispose();
         return raster;
@@ -569,19 +625,22 @@ public class RenderedImageExporter {
         // Embed raster base as PNG inside SVG
         svgG2d.drawImage(raster, 0, 0, null);
 
+        double effectiveDs = resolveEffectiveDownsample(config,
+                displayServer != null ? displayServer : baseServer);
+
         // Paint object overlays as true SVG vector path elements
-        if (config.isIncludeAnnotations() || config.isIncludeDetections()) {
+        if (config.overlays().includeAnnotations() || config.overlays().includeDetections()) {
             paintObjectsAsSvg(svgG2d, imageData, config,
-                    x, y, w, h, config.getDownsample());
+                    x, y, w, h, effectiveDs);
         }
 
-        // Draw remaining overlays (scale bar, color scale bar, panel label)
+        // Draw remaining overlays (scale bar, color scale bar, panel label, info label)
         // but skip object painting since we already did it as SVG vectors
         drawVectorOverlays(svgG2d, imageData, densityServer, config,
                 x, y, w, h,
                 raster.getWidth(), raster.getHeight(),
-                panelLabel, config.getDownsample(),
-                true);  // skipObjectPainting = true
+                panelLabel, effectiveDs,
+                true, null, null);  // skipObjectPainting = true
 
         svgG2d.dispose();
         return svgG2d.getSVGDocument();
@@ -626,8 +685,8 @@ public class RenderedImageExporter {
             var objects = allObjects.stream()
                     .filter(o -> o.hasROI())
                     .filter(o -> {
-                        if (o.isAnnotation()) return config.isIncludeAnnotations();
-                        if (o.isDetection()) return config.isIncludeDetections();
+                        if (o.isAnnotation()) return config.overlays().includeAnnotations();
+                        if (o.isDetection()) return config.overlays().includeDetections();
                         return false;
                     })
                     .toList();
@@ -675,7 +734,7 @@ public class RenderedImageExporter {
                     g2d.setRenderingHint(SVGHints.KEY_ELEMENT_ID, objId);
 
                     // Fill with transparency
-                    boolean shouldFill = obj.isAnnotation() && config.isFillAnnotations();
+                    boolean shouldFill = obj.isAnnotation() && config.overlays().fillAnnotations();
                     if (shouldFill) {
                         g2d.setColor(new Color(
                                 awtColor.getRed(), awtColor.getGreen(),
@@ -856,6 +915,7 @@ public class RenderedImageExporter {
     private static RenderedExportConfig buildPreviewConfig(RenderedExportConfig config,
                                                             double previewDownsample) {
         return new RenderedExportConfig.Builder()
+                // Core fields
                 .regionType(config.getRegionType())
                 .selectedClassifications(config.getSelectedClassifications())
                 .paddingPixels(config.getPaddingPixels())
@@ -863,31 +923,20 @@ public class RenderedImageExporter {
                 .displaySettingsMode(config.getDisplaySettingsMode())
                 .capturedDisplaySettings(config.getCapturedDisplaySettings())
                 .displayPresetName(config.getDisplayPresetName())
-                .classifierName(config.getClassifierName())
                 .overlayOpacity(config.getOverlayOpacity())
                 .downsample(previewDownsample)
+                .targetDpi(config.getTargetDpi())
                 .format(config.getFormat())
                 .outputDirectory(config.getOutputDirectory())
-                .includeAnnotations(config.isIncludeAnnotations())
-                .includeDetections(config.isIncludeDetections())
-                .fillAnnotations(config.isFillAnnotations())
-                .showNames(config.isShowNames())
-                .showScaleBar(config.isShowScaleBar())
-                .scaleBarPosition(config.getScaleBarPosition())
-                .scaleBarColorHex(config.getScaleBarColorHex())
-                .scaleBarFontSize(config.getScaleBarFontSize())
-                .scaleBarBoldText(config.isScaleBarBoldText())
-                .densityMapName(config.getDensityMapName())
-                .colormapName(config.getColormapName())
-                .showColorScaleBar(config.isShowColorScaleBar())
-                .colorScaleBarPosition(config.getColorScaleBarPosition())
-                .colorScaleBarFontSize(config.getColorScaleBarFontSize())
-                .colorScaleBarBoldText(config.isColorScaleBarBoldText())
-                .showPanelLabel(config.isShowPanelLabel())
-                .panelLabelText(config.getPanelLabelText())
-                .panelLabelPosition(config.getPanelLabelPosition())
-                .panelLabelFontSize(config.getPanelLabelFontSize())
-                .panelLabelBold(config.isPanelLabelBold())
+                .matchedDisplayPercentile(config.getMatchedDisplayPercentile())
+                // Sub-configs copied wholesale
+                .overlays(config.overlays())
+                .scaleBar(config.scaleBar())
+                .colorScaleBar(config.colorScaleBar())
+                .panelLabel(config.panelLabel())
+                .infoLabel(config.infoLabel())
+                .splitChannel(config.splitChannel())
+                .inset(config.inset())
                 .build();
     }
 
@@ -971,8 +1020,20 @@ public class RenderedImageExporter {
             ImageServer<BufferedImage> displayServer,
             RenderedExportConfig config,
             String panelLabel) throws Exception {
+        return renderClassifierComposite(imageData, baseServer, classificationServer,
+                displayServer, config, panelLabel, null);
+    }
 
-        double downsample = config.getDownsample();
+    private static BufferedImage renderClassifierComposite(
+            ImageData<BufferedImage> imageData,
+            ImageServer<BufferedImage> baseServer,
+            PixelClassificationImageServer classificationServer,
+            ImageServer<BufferedImage> displayServer,
+            RenderedExportConfig config,
+            String panelLabel,
+            String entryName) throws Exception {
+
+        double downsample = resolveEffectiveDownsample(config, baseServer);
         int outputWidth = (int) Math.ceil(baseServer.getWidth() / downsample);
         int outputHeight = (int) Math.ceil(baseServer.getHeight() / downsample);
 
@@ -1008,19 +1069,27 @@ public class RenderedImageExporter {
                     0, 0, baseImage.getWidth(), baseImage.getHeight(), null);
         }
 
-        if (config.isIncludeAnnotations() || config.isIncludeDetections()) {
+        if (config.overlays().includeAnnotations() || config.overlays().includeDetections()) {
             g2d.setComposite(AlphaComposite.getInstance(
                     AlphaComposite.SRC_OVER, 1.0f));
             paintObjects(g2d, imageData, downsample, outputWidth, outputHeight,
-                    config.isIncludeAnnotations(), config.isIncludeDetections(),
-                    config.isFillAnnotations(), config.isShowNames());
+                    config.overlays().includeAnnotations(), config.overlays().includeDetections(),
+                    config.overlays().fillAnnotations(), config.overlays().showNames());
         }
 
         maybeDrawScaleBar(g2d, imageData, config,
-                baseImage.getWidth(), baseImage.getHeight());
+                baseImage.getWidth(), baseImage.getHeight(), downsample);
 
         maybeDrawPanelLabel(g2d, config, panelLabel,
                 baseImage.getWidth(), baseImage.getHeight());
+
+        String infoText = entryName != null && config.infoLabel().show()
+                ? resolveInfoLabelTemplate(config.infoLabel().text(), entryName, imageData, config)
+                : null;
+        maybeDrawInfoLabel(g2d, config, infoText,
+                baseImage.getWidth(), baseImage.getHeight());
+
+        maybeDrawInset(g2d, result, config);
 
         g2d.dispose();
         return result;
@@ -1035,8 +1104,19 @@ public class RenderedImageExporter {
             ImageServer<BufferedImage> displayServer,
             RenderedExportConfig config,
             String panelLabel) throws Exception {
+        return renderObjectComposite(imageData, baseServer, displayServer,
+                config, panelLabel, null);
+    }
 
-        double downsample = config.getDownsample();
+    private static BufferedImage renderObjectComposite(
+            ImageData<BufferedImage> imageData,
+            ImageServer<BufferedImage> baseServer,
+            ImageServer<BufferedImage> displayServer,
+            RenderedExportConfig config,
+            String panelLabel,
+            String entryName) throws Exception {
+
+        double downsample = resolveEffectiveDownsample(config, baseServer);
         int outputWidth = (int) Math.ceil(baseServer.getWidth() / downsample);
         int outputHeight = (int) Math.ceil(baseServer.getHeight() / downsample);
 
@@ -1064,18 +1144,62 @@ public class RenderedImageExporter {
             g2d.setComposite(AlphaComposite.getInstance(
                     AlphaComposite.SRC_OVER, opacity));
             paintObjects(g2d, imageData, downsample, outputWidth, outputHeight,
-                    config.isIncludeAnnotations(), config.isIncludeDetections(),
-                    config.isFillAnnotations(), config.isShowNames());
+                    config.overlays().includeAnnotations(), config.overlays().includeDetections(),
+                    config.overlays().fillAnnotations(), config.overlays().showNames());
         }
 
         maybeDrawScaleBar(g2d, imageData, config,
-                baseImage.getWidth(), baseImage.getHeight());
+                baseImage.getWidth(), baseImage.getHeight(), downsample);
 
         maybeDrawPanelLabel(g2d, config, panelLabel,
                 baseImage.getWidth(), baseImage.getHeight());
 
+        String infoText = entryName != null && config.infoLabel().show()
+                ? resolveInfoLabelTemplate(config.infoLabel().text(), entryName, imageData, config)
+                : null;
+        maybeDrawInfoLabel(g2d, config, infoText,
+                baseImage.getWidth(), baseImage.getHeight());
+
+        maybeDrawInset(g2d, result, config);
+
         g2d.dispose();
         return result;
+    }
+
+    /**
+     * Create an ImageDisplay with config-appropriate settings applied.
+     * GLOBAL_MATCHED mode uses capturedDisplaySettings (same path as CURRENT_VIEWER).
+     *
+     * @return the configured ImageDisplay, or null for RAW mode or on failure
+     */
+    static ImageDisplay resolveImageDisplay(ImageData<BufferedImage> imageData,
+                                             RenderedExportConfig config) {
+        var mode = config.getDisplaySettingsMode();
+        if (mode == RenderedExportConfig.DisplaySettingsMode.RAW) {
+            return null;
+        }
+
+        try {
+            var display = ImageDisplay.create(imageData);
+
+            if (mode == RenderedExportConfig.DisplaySettingsMode.CURRENT_VIEWER
+                    || mode == RenderedExportConfig.DisplaySettingsMode.SAVED_PRESET
+                    || mode == RenderedExportConfig.DisplaySettingsMode.GLOBAL_MATCHED) {
+                var settings = config.getCapturedDisplaySettings();
+                if (settings != null) {
+                    DisplaySettingUtils.applySettingsToDisplay(display, settings);
+                } else {
+                    logger.warn("No display settings available for mode {}; "
+                            + "using per-image defaults", mode);
+                }
+            }
+            // PER_IMAGE_SAVED: display already loaded from imageData properties
+
+            return display;
+        } catch (Exception e) {
+            logger.warn("Failed to create ImageDisplay: {}", e.getMessage());
+            return null;
+        }
     }
 
     /**
@@ -1095,19 +1219,8 @@ public class RenderedImageExporter {
         }
 
         try {
-            var display = ImageDisplay.create(imageData);
-
-            if (mode == RenderedExportConfig.DisplaySettingsMode.CURRENT_VIEWER
-                    || mode == RenderedExportConfig.DisplaySettingsMode.SAVED_PRESET) {
-                var settings = config.getCapturedDisplaySettings();
-                if (settings != null) {
-                    DisplaySettingUtils.applySettingsToDisplay(display, settings);
-                } else {
-                    logger.warn("No display settings available for mode {}; "
-                            + "using per-image defaults", mode);
-                }
-            }
-            // PER_IMAGE_SAVED: display already loaded from imageData properties
+            var display = resolveImageDisplay(imageData, config);
+            if (display == null) return null;
 
             var channels = display.selectedChannels();
             if (channels == null || channels.isEmpty()) {
@@ -1127,24 +1240,37 @@ public class RenderedImageExporter {
 
     /**
      * Draw a scale bar if enabled and the image has pixel calibration.
+     * Uses the provided effective downsample (which may differ from config.getDownsample()
+     * when DPI mode is active).
      */
     private static void maybeDrawScaleBar(Graphics2D g2d,
                                            ImageData<BufferedImage> imageData,
                                            RenderedExportConfig config,
-                                           int w, int h) {
-        if (!config.isShowScaleBar()) return;
+                                           int w, int h,
+                                           double effectiveDownsample) {
+        if (!config.scaleBar().show()) return;
         var cal = imageData.getServer().getPixelCalibration();
         if (!cal.hasPixelSizeMicrons()) {
             logger.warn("Scale bar skipped -- no pixel calibration");
             return;
         }
-        double pxSize = cal.getAveragedPixelSizeMicrons() * config.getDownsample();
+        double pxSize = cal.getAveragedPixelSizeMicrons() * effectiveDownsample;
         g2d.setComposite(AlphaComposite.getInstance(AlphaComposite.SRC_OVER, 1.0f));
         ScaleBarRenderer.drawScaleBar(g2d, w, h, pxSize,
-                config.getScaleBarPosition(),
-                config.getScaleBarColorAsAwt(),
-                config.getScaleBarFontSize(),
-                config.isScaleBarBoldText());
+                config.scaleBar().position(),
+                config.scaleBar().colorAsAwt(),
+                config.scaleBar().fontSize(),
+                config.scaleBar().bold());
+    }
+
+    /**
+     * Draw a scale bar if enabled -- convenience overload using config downsample.
+     */
+    private static void maybeDrawScaleBar(Graphics2D g2d,
+                                           ImageData<BufferedImage> imageData,
+                                           RenderedExportConfig config,
+                                           int w, int h) {
+        maybeDrawScaleBar(g2d, imageData, config, w, h, config.getDownsample());
     }
 
     /**
@@ -1157,8 +1283,20 @@ public class RenderedImageExporter {
             ImageServer<BufferedImage> displayServer,
             RenderedExportConfig config,
             String panelLabel) throws Exception {
+        return renderDensityMapComposite(imageData, baseServer, densityServer,
+                displayServer, config, panelLabel, null);
+    }
 
-        double downsample = config.getDownsample();
+    private static BufferedImage renderDensityMapComposite(
+            ImageData<BufferedImage> imageData,
+            ImageServer<BufferedImage> baseServer,
+            ImageServer<BufferedImage> densityServer,
+            ImageServer<BufferedImage> displayServer,
+            RenderedExportConfig config,
+            String panelLabel,
+            String entryName) throws Exception {
+
+        double downsample = resolveEffectiveDownsample(config, baseServer);
         int outputWidth = (int) Math.ceil(baseServer.getWidth() / downsample);
         int outputHeight = (int) Math.ceil(baseServer.getHeight() / downsample);
 
@@ -1177,7 +1315,7 @@ public class RenderedImageExporter {
         BufferedImage densityImage = densityServer.readRegion(densityRequest);
 
         // Resolve colormap
-        ColorMaps.ColorMap colorMap = resolveColorMap(config.getColormapName());
+        ColorMaps.ColorMap colorMap = resolveColorMap(config.overlays().colormapName());
 
         // Compute min/max from density raster
         double[] minMax = computeMinMax(densityImage);
@@ -1208,22 +1346,30 @@ public class RenderedImageExporter {
         }
 
         // Object overlays on top if requested
-        if (config.isIncludeAnnotations() || config.isIncludeDetections()) {
+        if (config.overlays().includeAnnotations() || config.overlays().includeDetections()) {
             g2d.setComposite(AlphaComposite.getInstance(
                     AlphaComposite.SRC_OVER, 1.0f));
             paintObjects(g2d, imageData, downsample, outputWidth, outputHeight,
-                    config.isIncludeAnnotations(), config.isIncludeDetections(),
-                    config.isFillAnnotations(), config.isShowNames());
+                    config.overlays().includeAnnotations(), config.overlays().includeDetections(),
+                    config.overlays().fillAnnotations(), config.overlays().showNames());
         }
 
         maybeDrawScaleBar(g2d, imageData, config,
-                baseImage.getWidth(), baseImage.getHeight());
+                baseImage.getWidth(), baseImage.getHeight(), downsample);
 
         maybeDrawColorScaleBar(g2d, config, colorMap, minVal, maxVal,
                 baseImage.getWidth(), baseImage.getHeight());
 
         maybeDrawPanelLabel(g2d, config, panelLabel,
                 baseImage.getWidth(), baseImage.getHeight());
+
+        String infoText = entryName != null && config.infoLabel().show()
+                ? resolveInfoLabelTemplate(config.infoLabel().text(), entryName, imageData, config)
+                : null;
+        maybeDrawInfoLabel(g2d, config, infoText,
+                baseImage.getWidth(), baseImage.getHeight());
+
+        maybeDrawInset(g2d, result, config);
 
         g2d.dispose();
         return result;
@@ -1311,12 +1457,12 @@ public class RenderedImageExporter {
                                                 ColorMaps.ColorMap colorMap,
                                                 double min, double max,
                                                 int w, int h) {
-        if (!config.isShowColorScaleBar()) return;
+        if (!config.colorScaleBar().show()) return;
         g2d.setComposite(AlphaComposite.getInstance(AlphaComposite.SRC_OVER, 1.0f));
         ColorScaleBarRenderer.drawColorScaleBar(g2d, w, h, colorMap, min, max,
-                config.getColorScaleBarPosition(),
-                config.getColorScaleBarFontSize(),
-                config.isColorScaleBarBoldText());
+                config.colorScaleBar().position(),
+                config.colorScaleBar().fontSize(),
+                config.colorScaleBar().bold());
     }
 
     /**
@@ -1325,13 +1471,13 @@ public class RenderedImageExporter {
     private static void maybeDrawPanelLabel(Graphics2D g2d,
                                              RenderedExportConfig config,
                                              String label, int w, int h) {
-        if (!config.isShowPanelLabel()) return;
+        if (!config.panelLabel().show()) return;
         if (label == null || label.isEmpty()) return;
         g2d.setComposite(AlphaComposite.getInstance(AlphaComposite.SRC_OVER, 1.0f));
         PanelLabelRenderer.drawPanelLabel(g2d, w, h, label,
-                config.getPanelLabelPosition(),
-                config.getPanelLabelFontSize(),
-                config.isPanelLabelBold(),
+                config.panelLabel().position(),
+                config.panelLabel().fontSize(),
+                config.panelLabel().bold(),
                 Color.WHITE);
     }
 
@@ -1340,12 +1486,323 @@ public class RenderedImageExporter {
      * If config has fixed text, use it. Otherwise auto-increment from index.
      */
     private static String resolvePanelLabel(RenderedExportConfig config, int panelIndex) {
-        if (!config.isShowPanelLabel()) return null;
-        String text = config.getPanelLabelText();
+        if (!config.panelLabel().show()) return null;
+        String text = config.panelLabel().text();
         if (text != null && !text.isBlank()) {
             return text;
         }
         return PanelLabelRenderer.labelForIndex(panelIndex);
+    }
+
+    /**
+     * Export split-channel panels: one image per visible channel plus a merged composite.
+     * The merge panel includes all overlays; individual channel panels are bare images
+     * with optional grayscale conversion, color border, and color legend swatch.
+     *
+     * @param imageData      the image data to export
+     * @param classifier     the pixel classifier (null for non-CLASSIFIER modes)
+     * @param densityBuilder the density map builder (null for non-DENSITY_MAP modes)
+     * @param config         rendered export configuration with splitChannels enabled
+     * @param entryName      the image entry name (used for filename generation)
+     * @param panelIndex     zero-based index for auto-incrementing panel labels
+     * @return the number of files exported (channels + 1 for merge)
+     * @throws IOException if the export fails
+     */
+    public static int exportSplitChannels(ImageData<BufferedImage> imageData,
+                                           PixelClassifier classifier,
+                                           DensityMaps.DensityMapBuilder densityBuilder,
+                                           RenderedExportConfig config,
+                                           String entryName,
+                                           int panelIndex) throws IOException {
+        var baseServer = imageData.getServer();
+        var display = resolveImageDisplay(imageData, config);
+        if (display == null) {
+            logger.warn("Cannot resolve display for split-channel export; skipping");
+            return 0;
+        }
+
+        var channels = display.selectedChannels();
+        if (channels == null || channels.isEmpty()) {
+            logger.warn("No visible channels for split-channel export; skipping");
+            return 0;
+        }
+
+        double downsample = resolveEffectiveDownsample(config, baseServer);
+        File outDir = config.getOutputDirectory();
+        int filesExported = 0;
+
+        // 1. Merge panel -- full composite with all channels + overlays
+        try {
+            var mergeServer = ChannelDisplayTransformServer.createColorTransformServer(
+                    baseServer, channels);
+            String mergeFilename = config.buildMergeFilename(entryName);
+            File mergeFile = new File(outDir, mergeFilename);
+            String panelLabel = resolvePanelLabel(config, panelIndex);
+
+            // Render merge based on render mode (reuse existing composite methods)
+            BufferedImage mergeImage;
+            switch (config.getRenderMode()) {
+                case CLASSIFIER_OVERLAY -> {
+                    if (classifier != null && classifier.supportsImage(imageData)) {
+                        var classServer = new PixelClassificationImageServer(imageData, classifier);
+                        mergeImage = renderClassifierComposite(
+                                imageData, baseServer, classServer, mergeServer, config, panelLabel);
+                        closeQuietly(classServer, entryName);
+                    } else {
+                        mergeImage = renderObjectComposite(
+                                imageData, baseServer, mergeServer, config, panelLabel);
+                    }
+                }
+                case DENSITY_MAP_OVERLAY -> {
+                    if (densityBuilder != null) {
+                        mergeImage = renderDensityMapComposite(
+                                imageData, baseServer,
+                                densityBuilder.buildServer(imageData),
+                                mergeServer, config, panelLabel);
+                    } else {
+                        mergeImage = renderObjectComposite(
+                                imageData, baseServer, mergeServer, config, panelLabel);
+                    }
+                }
+                default -> mergeImage = renderObjectComposite(
+                        imageData, baseServer, mergeServer, config, panelLabel);
+            }
+
+            ImageWriterTools.writeImage(mergeImage, mergeFile.getAbsolutePath());
+            logger.info("Exported merge: {}", mergeFile.getAbsolutePath());
+            filesExported++;
+            closeQuietly(mergeServer, entryName);
+        } catch (Exception e) {
+            logger.error("Failed to export merge panel for {}: {}", entryName, e.getMessage());
+        }
+
+        // 2. Per-channel panels
+        for (int ch = 0; ch < channels.size(); ch++) {
+            try {
+                var singleChannel = List.of(channels.get(ch));
+                var chServer = ChannelDisplayTransformServer.createColorTransformServer(
+                        baseServer, singleChannel);
+
+                RegionRequest request = RegionRequest.createInstance(
+                        chServer.getPath(), downsample,
+                        0, 0, chServer.getWidth(), chServer.getHeight());
+                BufferedImage chImage = chServer.readRegion(request);
+
+                // Get channel color (packed RGB from QuPath channel info)
+                int channelColor = 0xFFFFFF; // default white
+                var serverChannels = baseServer.getMetadata().getChannels();
+                if (ch < serverChannels.size()) {
+                    channelColor = serverChannels.get(ch).getColor();
+                }
+
+                // Grayscale conversion (default)
+                if (config.splitChannel().grayscale()) {
+                    chImage = convertToGrayscale(chImage);
+                }
+
+                // Wrap in RGB for drawing decorations
+                BufferedImage result = new BufferedImage(
+                        chImage.getWidth(), chImage.getHeight(),
+                        BufferedImage.TYPE_INT_RGB);
+                Graphics2D g2d = result.createGraphics();
+                g2d.drawImage(chImage, 0, 0, null);
+
+                // Optional color border
+                if (config.splitChannel().colorBorder()) {
+                    drawChannelColorBorder(g2d, result.getWidth(), result.getHeight(),
+                            channelColor);
+                }
+
+                // Optional color legend swatch
+                if (config.splitChannel().colorLegend()) {
+                    String chName = channels.get(ch).getName();
+                    drawChannelColorLegend(g2d, result.getWidth(), result.getHeight(),
+                            channelColor, chName);
+                }
+
+                // Scale bar on per-channel panels too
+                maybeDrawScaleBar(g2d, imageData, config,
+                        result.getWidth(), result.getHeight());
+
+                g2d.dispose();
+
+                String chName = channels.get(ch).getName();
+                String chFilename = config.buildSplitChannelFilename(entryName, ch, chName);
+                File chFile = new File(outDir, chFilename);
+                ImageWriterTools.writeImage(result, chFile.getAbsolutePath());
+                logger.info("Exported channel {}: {}", chName, chFile.getAbsolutePath());
+                filesExported++;
+
+                closeQuietly(chServer, entryName);
+            } catch (Exception e) {
+                logger.error("Failed to export channel {} for {}: {}",
+                        ch, entryName, e.getMessage());
+            }
+        }
+
+        return filesExported;
+    }
+
+    /**
+     * Convert a color image to grayscale while preserving dimensions.
+     */
+    private static BufferedImage convertToGrayscale(BufferedImage src) {
+        var gray = new BufferedImage(src.getWidth(), src.getHeight(),
+                BufferedImage.TYPE_BYTE_GRAY);
+        var g = gray.createGraphics();
+        g.drawImage(src, 0, 0, null);
+        g.dispose();
+        return gray;
+    }
+
+    /**
+     * Draw a thin colored border around the image using the channel's pseudocolor.
+     */
+    private static void drawChannelColorBorder(Graphics2D g2d, int w, int h,
+                                                int packedColor) {
+        int r = (packedColor >> 16) & 0xFF;
+        int g = (packedColor >> 8) & 0xFF;
+        int b = packedColor & 0xFF;
+        Color borderColor = new Color(r, g, b);
+
+        int borderWidth = Math.max(2, Math.min(w, h) / 100);
+        g2d.setComposite(AlphaComposite.getInstance(AlphaComposite.SRC_OVER, 1.0f));
+        g2d.setColor(borderColor);
+        g2d.setStroke(new BasicStroke(borderWidth));
+        int half = borderWidth / 2;
+        g2d.drawRect(half, half, w - borderWidth, h - borderWidth);
+    }
+
+    /**
+     * Draw a small colored rectangle (swatch) with the channel name in the
+     * upper-left corner of the image.
+     */
+    private static void drawChannelColorLegend(Graphics2D g2d, int w, int h,
+                                                int packedColor, String channelName) {
+        int r = (packedColor >> 16) & 0xFF;
+        int g = (packedColor >> 8) & 0xFF;
+        int b = packedColor & 0xFF;
+        Color chColor = new Color(r, g, b);
+
+        int minDim = Math.min(w, h);
+        int swatchSize = Math.max(8, minDim / 25);
+        int margin = Math.max(4, minDim / 50);
+        int fontSize = Math.max(10, minDim / 40);
+
+        g2d.setComposite(AlphaComposite.getInstance(AlphaComposite.SRC_OVER, 1.0f));
+
+        // Draw swatch
+        g2d.setColor(chColor);
+        g2d.fillRect(margin, margin, swatchSize, swatchSize);
+
+        // Draw outline around swatch for visibility
+        g2d.setColor(Color.WHITE);
+        g2d.drawRect(margin, margin, swatchSize, swatchSize);
+
+        // Draw channel name next to swatch
+        if (channelName != null && !channelName.isEmpty()) {
+            g2d.setFont(new java.awt.Font(java.awt.Font.SANS_SERIF, java.awt.Font.BOLD, fontSize));
+            int textX = margin + swatchSize + margin;
+            int textY = margin + swatchSize - 2;
+
+            // Outline for readability
+            g2d.setColor(Color.BLACK);
+            for (int dx = -1; dx <= 1; dx++) {
+                for (int dy = -1; dy <= 1; dy++) {
+                    if (dx != 0 || dy != 0) {
+                        g2d.drawString(channelName, textX + dx, textY + dy);
+                    }
+                }
+            }
+            g2d.setColor(Color.WHITE);
+            g2d.drawString(channelName, textX, textY);
+        }
+    }
+
+    /**
+     * Resolve effective downsample from config, using target DPI if set and
+     * the image has pixel calibration.
+     */
+    private static double resolveEffectiveDownsample(RenderedExportConfig config,
+                                                       ImageServer<BufferedImage> server) {
+        if (config.getTargetDpi() > 0) {
+            var cal = server.getPixelCalibration();
+            if (cal.hasPixelSizeMicrons()) {
+                return config.computeEffectiveDownsample(cal.getAveragedPixelSizeMicrons());
+            }
+        }
+        return config.getDownsample();
+    }
+
+    /**
+     * Resolve info label template placeholders with per-image values.
+     */
+    private static String resolveInfoLabelTemplate(String template, String entryName,
+                                                     ImageData<BufferedImage> imageData,
+                                                     RenderedExportConfig config) {
+        if (template == null || template.isEmpty()) return null;
+
+        String result = template;
+        result = result.replace("{imageName}", entryName != null ? entryName : "");
+
+        var server = imageData.getServer();
+        var cal = server.getPixelCalibration();
+        if (cal.hasPixelSizeMicrons()) {
+            String pxSize = String.format("%.3f um/px", cal.getAveragedPixelSizeMicrons());
+            result = result.replace("{pixelSize}", pxSize);
+        } else {
+            result = result.replace("{pixelSize}", "uncalibrated");
+        }
+
+        result = result.replace("{date}",
+                LocalDate.now().format(DateTimeFormatter.ISO_LOCAL_DATE));
+        result = result.replace("{time}",
+                LocalTime.now().format(DateTimeFormatter.ofPattern("HH:mm")));
+
+        // Image dimensions
+        result = result.replace("{width}", String.valueOf(server.getWidth()));
+        result = result.replace("{height}", String.valueOf(server.getHeight()));
+
+        // Classifier name
+        String classifierName = config.overlays().classifierName();
+        result = result.replace("{classifier}",
+                classifierName != null ? classifierName : "");
+
+        return result;
+    }
+
+    /**
+     * Draw an info label if enabled in the config.
+     */
+    private static void maybeDrawInfoLabel(Graphics2D g2d,
+                                            RenderedExportConfig config,
+                                            String resolvedText, int w, int h) {
+        if (!config.infoLabel().show()) return;
+        if (resolvedText == null || resolvedText.isEmpty()) return;
+        g2d.setComposite(AlphaComposite.getInstance(AlphaComposite.SRC_OVER, 1.0f));
+        InfoLabelRenderer.drawInfoLabel(g2d, w, h, resolvedText,
+                config.infoLabel().position(),
+                config.infoLabel().fontSize(),
+                config.infoLabel().bold(),
+                Color.WHITE);
+    }
+
+    /**
+     * Draw a magnified inset panel if enabled in the config.
+     * Must be called after all other overlays, as the inset crops from the
+     * composited result image.
+     */
+    private static void maybeDrawInset(Graphics2D g2d, BufferedImage result,
+                                        RenderedExportConfig config) {
+        if (!config.inset().show()) return;
+        InsetRenderer.drawInset(g2d, result,
+                config.inset().sourceX(), config.inset().sourceY(),
+                config.inset().sourceW(), config.inset().sourceH(),
+                config.inset().magnification(),
+                config.inset().position(),
+                config.inset().frameColorAsAwt(),
+                config.inset().frameWidth(),
+                config.inset().connectingLines());
     }
 
     private static void closeQuietly(AutoCloseable closeable, String context) {
