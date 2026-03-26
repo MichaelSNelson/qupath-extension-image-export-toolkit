@@ -52,10 +52,13 @@ public class ScaleBarRenderer {
      * @param barColor         primary color of the bar and text (any Color)
      * @param fontSize         font size in pixels; 0 = auto-compute from image dimensions
      * @param boldText         true for bold text, false for plain
+     * @param backgroundBox    true to draw a semi-transparent contrasting box behind the
+     *                         scale bar and label for guaranteed visibility on busy backgrounds
      */
     public static void drawScaleBar(Graphics2D g2d, int imageWidth, int imageHeight,
                                      double pixelSizeMicrons, Position position,
-                                     Color barColor, int fontSize, boolean boldText) {
+                                     Color barColor, int fontSize, boolean boldText,
+                                     boolean backgroundBox) {
         if (pixelSizeMicrons <= 0 || imageWidth <= 0 || imageHeight <= 0) {
             return;
         }
@@ -129,6 +132,28 @@ public class ScaleBarRenderer {
 
             Color primary = barColor != null ? barColor : Color.WHITE;
             Color outline = TextRenderUtils.computeOutlineColor(primary);
+
+            // Draw semi-transparent contrasting background box if requested
+            if (backgroundBox) {
+                int boxPad = Math.max(6, margin / 4);
+                int boxLeft = Math.min(barX, textX) - boxPad;
+                int boxTop = textY - textHeight - boxPad;
+                int boxRight = Math.max(barX + barLengthPx, textX + textWidth) + boxPad;
+                int boxBottom = barY + barHeight + boxPad;
+                // Clamp to image bounds
+                boxLeft = Math.max(0, boxLeft);
+                boxTop = Math.max(0, boxTop);
+                boxRight = Math.min(imageWidth, boxRight);
+                boxBottom = Math.min(imageHeight, boxBottom);
+
+                Composite prevComposite = g2d.getComposite();
+                g2d.setComposite(AlphaComposite.getInstance(AlphaComposite.SRC_OVER, 0.65f));
+                g2d.setColor(outline);
+                g2d.fillRoundRect(boxLeft, boxTop,
+                        boxRight - boxLeft, boxBottom - boxTop,
+                        boxPad, boxPad);
+                g2d.setComposite(prevComposite);
+            }
 
             // Draw bar with contrast outline
             g2d.setColor(outline);

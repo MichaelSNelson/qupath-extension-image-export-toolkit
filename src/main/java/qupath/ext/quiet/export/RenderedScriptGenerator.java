@@ -212,6 +212,7 @@ class RenderedScriptGenerator {
         appendLine(sb, "def scaleBarColorB = " + awtColor.getBlue());
         appendLine(sb, "def scaleBarFontSize = " + config.scaleBar().fontSize());
         appendLine(sb, "def scaleBarBoldText = " + config.scaleBar().bold());
+        appendLine(sb, "def scaleBarBackgroundBox = " + config.scaleBar().backgroundBox());
     }
 
     /**
@@ -220,7 +221,7 @@ class RenderedScriptGenerator {
      */
     private static void emitScaleBarFunction(StringBuilder sb) {
         appendLine(sb, "// Scale bar drawing function");
-        appendLine(sb, "def drawScaleBar(Graphics2D g2d, int imgW, int imgH, double pxSize, String pos, int colR, int colG, int colB, int fSize, boolean bold) {");
+        appendLine(sb, "def drawScaleBar(Graphics2D g2d, int imgW, int imgH, double pxSize, String pos, int colR, int colG, int colB, int fSize, boolean bold, boolean bgBox) {");
         appendLine(sb, "    if (pxSize <= 0) return");
         appendLine(sb, "    def niceLengths = [0.1, 0.25, 0.5, 1, 2, 5, 10, 20, 50, 100, 200, 250, 500, 1000, 2000, 5000, 10000, 20000, 50000]");
         appendLine(sb, "    double target = imgW * pxSize * 0.15");
@@ -249,6 +250,18 @@ class RenderedScriptGenerator {
         appendLine(sb, "    def primary = new Color(colR, colG, colB)");
         appendLine(sb, "    double lum = (0.299 * colR + 0.587 * colG + 0.114 * colB) / 255.0");
         appendLine(sb, "    def outline = lum > 0.5 ? Color.BLACK : Color.WHITE");
+        appendLine(sb, "    if (bgBox) {");
+        appendLine(sb, "        int boxPad = Math.max(6, margin / 4)");
+        appendLine(sb, "        int boxL = Math.max(0, Math.min(bx, tx) - boxPad)");
+        appendLine(sb, "        int boxT = Math.max(0, ty - th - boxPad)");
+        appendLine(sb, "        int boxR = Math.min(imgW, Math.max(bx + barPx, tx + tw) + boxPad)");
+        appendLine(sb, "        int boxB = Math.min(imgH, by + barH + boxPad)");
+        appendLine(sb, "        def prevComp = g2d.getComposite()");
+        appendLine(sb, "        g2d.setComposite(java.awt.AlphaComposite.getInstance(java.awt.AlphaComposite.SRC_OVER, 0.65f))");
+        appendLine(sb, "        g2d.setColor(outline)");
+        appendLine(sb, "        g2d.fillRoundRect(boxL, boxT, boxR - boxL, boxB - boxT, boxPad, boxPad)");
+        appendLine(sb, "        g2d.setComposite(prevComp)");
+        appendLine(sb, "    }");
         appendLine(sb, "    g2d.setColor(outline)");
         appendLine(sb, "    g2d.fillRect(bx - 1, by - 1, barPx + 2, barH + 2)");
         appendLine(sb, "    g2d.setColor(primary)");
@@ -276,7 +289,7 @@ class RenderedScriptGenerator {
         appendLine(sb, "            if (cal.hasPixelSizeMicrons()) {");
         appendLine(sb, "                double pxSize = cal.getAveragedPixelSizeMicrons() * downsample");
         appendLine(sb, "                g2d.setComposite(java.awt.AlphaComposite.getInstance(java.awt.AlphaComposite.SRC_OVER, 1.0f))");
-        appendLine(sb, "                drawScaleBar(g2d, outW, outH, pxSize, scaleBarPosition, scaleBarColorR, scaleBarColorG, scaleBarColorB, scaleBarFontSize, scaleBarBoldText)");
+        appendLine(sb, "                drawScaleBar(g2d, outW, outH, pxSize, scaleBarPosition, scaleBarColorR, scaleBarColorG, scaleBarColorB, scaleBarFontSize, scaleBarBoldText, scaleBarBackgroundBox)");
         appendLine(sb, "            } else {");
         appendLine(sb, "                println \"  WARNING: Scale bar skipped -- no pixel calibration\"");
         appendLine(sb, "            }");

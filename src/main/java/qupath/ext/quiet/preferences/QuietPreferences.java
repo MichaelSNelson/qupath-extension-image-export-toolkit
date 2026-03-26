@@ -89,6 +89,9 @@ public class QuietPreferences {
     private static final BooleanProperty renderedScaleBarBold =
             PathPrefs.createPersistentPreference(PREFIX + "rendered.scaleBarBold", true);
 
+    private static final BooleanProperty renderedScaleBarBackgroundBox =
+            PathPrefs.createPersistentPreference(PREFIX + "rendered.scaleBarBackgroundBox", false);
+
     // --- Rendered region type preferences ---
 
     private static final StringProperty renderedRegionType =
@@ -408,6 +411,10 @@ public class QuietPreferences {
     public static BooleanProperty renderedScaleBarBoldProperty() { return renderedScaleBarBold; }
     public static boolean isRenderedScaleBarBold() { return renderedScaleBarBold.get(); }
     public static void setRenderedScaleBarBold(boolean value) { renderedScaleBarBold.set(value); }
+
+    public static BooleanProperty renderedScaleBarBackgroundBoxProperty() { return renderedScaleBarBackgroundBox; }
+    public static boolean isRenderedScaleBarBackgroundBox() { return renderedScaleBarBackgroundBox.get(); }
+    public static void setRenderedScaleBarBackgroundBox(boolean value) { renderedScaleBarBackgroundBox.set(value); }
 
     // --- Region type ---
 

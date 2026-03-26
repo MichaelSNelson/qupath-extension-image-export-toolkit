@@ -102,6 +102,8 @@ public class RenderedConfigPane extends VBox {
     private ColorPicker scaleBarColorPicker;
     private Spinner<Integer> scaleBarFontSizeSpinner;
     private CheckBox scaleBarBoldCheck;
+    private CheckBox scaleBarBackgroundBoxCheck;
+    private Label scaleBarColorHintLabel;
     private Button previewButton;
 
     // Density map controls
@@ -657,6 +659,16 @@ public class RenderedConfigPane extends VBox {
         grid.add(scaleBarBoldCheck, 0, row, 2, 1);
         row++;
 
+        scaleBarBackgroundBoxCheck = new CheckBox(resources.getString("rendered.label.scaleBarBackgroundBox"));
+        grid.add(scaleBarBackgroundBoxCheck, 0, row, 2, 1);
+        row++;
+
+        scaleBarColorHintLabel = new Label(resources.getString("rendered.scaleBar.colorHint"));
+        scaleBarColorHintLabel.setWrapText(true);
+        scaleBarColorHintLabel.setStyle("-fx-font-size: 0.85em; -fx-text-fill: #666666; -fx-font-style: italic;");
+        grid.add(scaleBarColorHintLabel, 0, row, 2, 1);
+        row++;
+
         return SectionBuilder.createSection(
                 resources.getString("rendered.section.scaleBar"), false, grid);
     }
@@ -998,6 +1010,10 @@ public class RenderedConfigPane extends VBox {
         scaleBarFontSizeSpinner.setManaged(showScaleBar);
         scaleBarBoldCheck.setVisible(showScaleBar);
         scaleBarBoldCheck.setManaged(showScaleBar);
+        scaleBarBackgroundBoxCheck.setVisible(showScaleBar);
+        scaleBarBackgroundBoxCheck.setManaged(showScaleBar);
+        scaleBarColorHintLabel.setVisible(showScaleBar);
+        scaleBarColorHintLabel.setManaged(showScaleBar);
     }
 
     private void updateColorScaleBarVisibility(boolean show) {
@@ -1182,6 +1198,7 @@ public class RenderedConfigPane extends VBox {
         scaleBarColorPicker.setTooltip(createTooltip("tooltip.rendered.scaleBarColor"));
         scaleBarFontSizeSpinner.setTooltip(createTooltip("tooltip.rendered.scaleBarFontSize"));
         scaleBarBoldCheck.setTooltip(createTooltip("tooltip.rendered.scaleBarBold"));
+        scaleBarBackgroundBoxCheck.setTooltip(createTooltip("tooltip.rendered.scaleBarBackgroundBox"));
         previewButton.setTooltip(createTooltip("tooltip.rendered.previewImage"));
         densityMapCombo.setTooltip(createTooltip("tooltip.rendered.densityMap"));
         colormapCombo.setTooltip(createTooltip("tooltip.rendered.colormap"));
@@ -1367,6 +1384,11 @@ public class RenderedConfigPane extends VBox {
 
         scaleBarFontSizeSpinner.getValueFactory().setValue(QuietPreferences.getRenderedScaleBarFontSize());
         scaleBarBoldCheck.setSelected(QuietPreferences.isRenderedScaleBarBold());
+        scaleBarBackgroundBoxCheck.setSelected(QuietPreferences.isRenderedScaleBarBackgroundBox());
+
+        // Smart default: auto-detect scale bar color from project image types
+        // Only applies when the color is still the default white (#FFFFFF)
+        applySmartScaleBarColorDefault(savedColor);
 
         updateScaleBarVisibility(showScaleBarCheck.isSelected());
 
@@ -1467,6 +1489,7 @@ public class RenderedConfigPane extends VBox {
         QuietPreferences.setRenderedScaleBarFontSize(
                 scaleBarFontSizeSpinner.getValue() != null ? scaleBarFontSizeSpinner.getValue() : 0);
         QuietPreferences.setRenderedScaleBarBold(scaleBarBoldCheck.isSelected());
+        QuietPreferences.setRenderedScaleBarBackgroundBox(scaleBarBackgroundBoxCheck.isSelected());
         var densityMap = densityMapCombo.getValue();
         if (densityMap != null) QuietPreferences.setRenderedDensityMapName(densityMap);
         var colormap = colormapCombo.getValue();
@@ -1552,7 +1575,8 @@ public class RenderedConfigPane extends VBox {
                 .scaleBarColorHex(fxColorToHex(scaleBarColorPicker.getValue()))
                 .scaleBarFontSize(scaleBarFontSizeSpinner.getValue() != null
                         ? scaleBarFontSizeSpinner.getValue() : 0)
-                .scaleBarBoldText(scaleBarBoldCheck.isSelected());
+                .scaleBarBoldText(scaleBarBoldCheck.isSelected())
+                .scaleBarBackgroundBox(scaleBarBackgroundBoxCheck.isSelected());
 
         // Panel label options
         String panelText = panelLabelTextField.getText();
@@ -1838,5 +1862,62 @@ public class RenderedConfigPane extends VBox {
         } catch (IllegalArgumentException e) {
             return javafx.scene.paint.Color.WHITE;
         }
+    }
+
+    /**
+     * Auto-detect the best default scale bar color from project image types.
+     * Only applies when the saved color is still the hardcoded default (#FFFFFF),
+     * indicating the user has not explicitly chosen a color.
+     * <p>
+     * Brightfield images (white/light background) -> black scale bar.
+     * Fluorescence images (dark background) -> white scale bar (keep default).
+     */
+    private void applySmartScaleBarColorDefault(String savedColor) {
+        // Only override when at the default value -- respect explicit user choices
+        if (savedColor != null && !savedColor.isBlank()
+                && !"#FFFFFF".equalsIgnoreCase(savedColor)
+                && !"WHITE".equalsIgnoreCase(savedColor)) {
+            return;
+        }
+
+        var project = qupath.getProject();
+        if (project == null) return;
+
+        var entries = project.getImageList();
+        if (entries.isEmpty()) return;
+
+        // Sample up to 10 images to determine the dominant type
+        int brightfieldCount = 0;
+        int fluorescenceCount = 0;
+        int sampled = 0;
+        int maxSample = Math.min(entries.size(), 10);
+
+        for (int i = 0; i < maxSample; i++) {
+            try {
+                var imageData = entries.get(i).readImageData();
+                if (imageData == null) continue;
+                var type = imageData.getImageType();
+                if (type == null) continue;
+                sampled++;
+                String typeName = type.name();
+                if (typeName.startsWith("BRIGHTFIELD")) {
+                    brightfieldCount++;
+                } else if ("FLUORESCENCE".equals(typeName)) {
+                    fluorescenceCount++;
+                }
+            } catch (Exception e) {
+                logger.debug("Could not read image type for smart default: {}",
+                        e.getMessage());
+            }
+        }
+
+        if (sampled == 0) return;
+
+        // If majority is brightfield, default to black for visibility on white backgrounds
+        if (brightfieldCount > fluorescenceCount) {
+            scaleBarColorPicker.setValue(javafx.scene.paint.Color.BLACK);
+            logger.debug("Smart default: set scale bar color to black (brightfield-dominant project)");
+        }
+        // Fluorescence-dominant or mixed: keep white (the default)
     }
 }

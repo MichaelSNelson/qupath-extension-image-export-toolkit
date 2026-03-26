@@ -154,9 +154,10 @@ public class MaskConfigPane extends VBox {
 
         // Format
         settingsGrid.add(new Label(resources.getString("mask.label.format")), 0, row);
+        // Exclude SVG (not applicable) and JPEG (lossy compression destroys label values)
         formatCombo = new ComboBox<>(FXCollections.observableArrayList(
                 java.util.Arrays.stream(OutputFormat.values())
-                        .filter(f -> f != OutputFormat.SVG)
+                        .filter(f -> f != OutputFormat.SVG && f != OutputFormat.JPEG)
                         .toList()));
         formatCombo.setValue(OutputFormat.PNG);
         settingsGrid.add(formatCombo, 1, row);
@@ -308,8 +309,12 @@ public class MaskConfigPane extends VBox {
         if (savedDs >= 1.0) downsampleCombo.setValue(savedDs);
 
         String savedFormat = QuietPreferences.getMaskFormat();
-        try { formatCombo.setValue(OutputFormat.valueOf(savedFormat)); }
-        catch (IllegalArgumentException e) { /* keep default */ }
+        try {
+            OutputFormat restored = OutputFormat.valueOf(savedFormat);
+            // JPEG is no longer valid for masks; fall back to PNG
+            if (restored == OutputFormat.JPEG) restored = OutputFormat.PNG;
+            formatCombo.setValue(restored);
+        } catch (IllegalArgumentException e) { /* keep default */ }
 
         grayscaleLutCheck.setSelected(QuietPreferences.isMaskGrayscaleLut());
         shuffleInstanceLabelsCheck.setSelected(QuietPreferences.isMaskShuffleInstanceLabels());

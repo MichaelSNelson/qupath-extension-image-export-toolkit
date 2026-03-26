@@ -19,6 +19,12 @@ import qupath.lib.regions.RegionRequest;
  * <p>
  * Supports binary masks, grayscale labels, class-colored, instance IDs,
  * and multi-channel mask types.
+ * <p>
+ * Label integrity: LabeledImageServer renders from vector geometries (object ROIs)
+ * at the requested downsample, producing exact label values at any resolution.
+ * No raster interpolation occurs, so label values are never blurred or mixed.
+ * JPEG format is blocked at the config level to prevent lossy compression
+ * from destroying label values.
  */
 public class MaskImageExporter {
 

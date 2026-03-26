@@ -1260,7 +1260,8 @@ public class RenderedImageExporter {
                 config.scaleBar().position(),
                 config.scaleBar().colorAsAwt(),
                 config.scaleBar().fontSize(),
-                config.scaleBar().bold());
+                config.scaleBar().bold(),
+                config.scaleBar().backgroundBox());
     }
 
     /**

@@ -388,17 +388,12 @@ class PublicationAdviceCheckerTest {
 
     @Test
     void testJpegMaskError() {
-        var config = new MaskExportConfig.Builder()
-                .format(OutputFormat.JPEG)
-                .outputDirectory(tempDir)
-                .build();
-
-        var items = PublicationAdviceChecker.check(
-                ExportCategory.MASK, config, List.of());
-
-        assertTrue(items.stream().anyMatch(i ->
-                i.severity() == AdviceSeverity.ERROR
-                        && i.title().contains("corrupt")));
+        // JPEG is now blocked at the config level -- build() throws
+        assertThrows(IllegalArgumentException.class, () ->
+                new MaskExportConfig.Builder()
+                        .format(OutputFormat.JPEG)
+                        .outputDirectory(tempDir)
+                        .build());
     }
 
     @Test

@@ -67,7 +67,8 @@ public class RenderedExportConfig {
             ScaleBarRenderer.Position position,
             String colorHex,
             int fontSize,
-            boolean bold
+            boolean bold,
+            boolean backgroundBox
     ) {
         /** Converts the hex color string to an AWT Color, falling back to white. */
         public Color colorAsAwt() {
@@ -216,7 +217,8 @@ public class RenderedExportConfig {
                 builder.scaleBarPosition,
                 builder.scaleBarColorHex,
                 builder.scaleBarFontSize,
-                builder.scaleBarBoldText);
+                builder.scaleBarBoldText,
+                builder.scaleBarBackgroundBox);
         this.colorScaleBar = new ColorScaleBarConfig(
                 builder.showColorScaleBar,
                 builder.colorScaleBarPosition,
@@ -492,6 +494,7 @@ public class RenderedExportConfig {
         private String scaleBarColorHex = "#FFFFFF";
         private int scaleBarFontSize = 0;
         private boolean scaleBarBoldText = true;
+        private boolean scaleBarBackgroundBox = false;
 
         // -- Color scale bar fields --
         private boolean showColorScaleBar = false;
@@ -685,6 +688,11 @@ public class RenderedExportConfig {
             return this;
         }
 
+        public Builder scaleBarBackgroundBox(boolean backgroundBox) {
+            this.scaleBarBackgroundBox = backgroundBox;
+            return this;
+        }
+
         /** Sets all scale bar fields from a sub-config record. */
         public Builder scaleBar(ScaleBarConfig cfg) {
             this.showScaleBar = cfg.show();
@@ -692,6 +700,7 @@ public class RenderedExportConfig {
             this.scaleBarColorHex = cfg.colorHex();
             this.scaleBarFontSize = cfg.fontSize();
             this.scaleBarBoldText = cfg.bold();
+            this.scaleBarBackgroundBox = cfg.backgroundBox();
             return this;
         }
 

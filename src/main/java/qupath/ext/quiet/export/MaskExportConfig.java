@@ -243,6 +243,10 @@ public class MaskExportConfig {
             if (format == null) {
                 throw new IllegalArgumentException("Output format is required");
             }
+            if (format == OutputFormat.JPEG) {
+                throw new IllegalArgumentException(
+                        "JPEG is not supported for mask export -- lossy compression destroys label values");
+            }
             if (maskType == null) {
                 throw new IllegalArgumentException("Mask type is required");
             }

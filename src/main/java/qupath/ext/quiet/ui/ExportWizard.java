@@ -210,6 +210,9 @@ public class ExportWizard {
                 scrollPane.setFitToWidth(true);
                 scrollPane.setHbarPolicy(ScrollPane.ScrollBarPolicy.NEVER);
                 centerContent = scrollPane;
+
+                // Show context-sensitive QUAREP guidelines on the right
+                root.setRight(new GuidelinesPane(qupath, selectedCategory));
             }
             case 3 -> {
                 // Set default output dir if empty
@@ -226,6 +229,10 @@ public class ExportWizard {
         }
 
         root.setCenter(centerContent);
+        // Guidelines panel only shown on Step 2
+        if (step != 2) {
+            root.setRight(null);
+        }
         updateNavButtons();
     }
 
