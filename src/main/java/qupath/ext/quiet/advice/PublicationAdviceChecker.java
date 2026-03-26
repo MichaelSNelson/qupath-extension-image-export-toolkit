@@ -160,6 +160,9 @@ public class PublicationAdviceChecker {
                     resources.getString("advice.splitPseudocolor.action"),
                     SECTION_SPLIT_CHANNEL));
         }
+
+        // Check 11: Non-unity gamma in display settings
+        checkGamma(config, items);
     }
 
     // ---- Mask checks ----
@@ -278,6 +281,48 @@ public class PublicationAdviceChecker {
                         null));
                 return; // Only warn once
             }
+        }
+    }
+
+    /**
+     * Check if the captured display settings or viewer gamma is not 1.0.
+     * Non-unity gamma is a non-linear adjustment that should be reported.
+     * Note: QuIET does not currently apply gamma during export, so
+     * the exported image will NOT match the viewer if gamma != 1.0.
+     */
+    private static void checkGamma(RenderedExportConfig config,
+                                    List<AdviceItem> items) {
+        // Check captured display settings (CURRENT_VIEWER, SAVED_PRESET modes)
+        var settings = config.getCapturedDisplaySettings();
+        if (settings != null) {
+            double gamma = settings.getGamma();
+            if (gamma != 1.0 && Double.isFinite(gamma) && gamma > 0) {
+                items.add(new AdviceItem(
+                        AdviceSeverity.WARNING,
+                        resources.getString("advice.gamma.title"),
+                        String.format(resources.getString("advice.gamma.description"),
+                                gamma),
+                        "IC-9",
+                        resources.getString("advice.gamma.action"),
+                        SECTION_DISPLAY_SETTINGS));
+                return;
+            }
+        }
+        // Also check the global viewer gamma preference
+        try {
+            double viewerGamma = qupath.lib.gui.prefs.PathPrefs.viewerGammaProperty().get();
+            if (viewerGamma != 1.0 && Double.isFinite(viewerGamma) && viewerGamma > 0) {
+                items.add(new AdviceItem(
+                        AdviceSeverity.WARNING,
+                        resources.getString("advice.gamma.title"),
+                        String.format(resources.getString("advice.gamma.description"),
+                                viewerGamma),
+                        "IC-9",
+                        resources.getString("advice.gamma.action"),
+                        SECTION_DISPLAY_SETTINGS));
+            }
+        } catch (Exception e) {
+            // PathPrefs not available -- skip
         }
     }
 
