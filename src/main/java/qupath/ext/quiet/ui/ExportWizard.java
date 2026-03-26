@@ -640,9 +640,13 @@ public class ExportWizard {
                     resources.getString("error.title"),
                     result.getSummary() + "\n\nErrors:\n" + errorText);
         } else {
+            // Include sidecar file notice in success message
+            String sidecarName = (selectedCategory == ExportCategory.MASK)
+                    ? "mask_legend.txt" : "export_info.txt";
             Dialogs.showInfoNotification(
                     resources.getString("name"),
-                    result.getSummary());
+                    result.getSummary() + "\n\n"
+                    + String.format(resources.getString("export.sidecarNotice"), sidecarName));
         }
     }
 

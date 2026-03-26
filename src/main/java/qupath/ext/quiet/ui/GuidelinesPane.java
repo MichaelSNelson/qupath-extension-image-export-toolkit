@@ -189,6 +189,21 @@ class GuidelinesPane extends ScrollPane {
                 "ID-1");
 
         addItem(GuidelineLevel.TIP,
+                resources.getString("guidelines.rendered.borders.title"),
+                resources.getString("guidelines.rendered.borders.description"),
+                "ID-2");
+
+        addItem(GuidelineLevel.TIP,
+                resources.getString("guidelines.rendered.legibility.title"),
+                resources.getString("guidelines.rendered.legibility.description"),
+                "IA-3");
+
+        addItem(GuidelineLevel.TIP,
+                resources.getString("guidelines.rendered.imagingDetails.title"),
+                resources.getString("guidelines.rendered.imagingDetails.description"),
+                "IA-5");
+
+        addItem(GuidelineLevel.TIP,
                 resources.getString("guidelines.rendered.annotationExplain.title"),
                 resources.getString("guidelines.rendered.annotationExplain.description"),
                 "IA-2");
@@ -197,6 +212,21 @@ class GuidelinesPane extends ScrollPane {
                 resources.getString("guidelines.rendered.dontObscure.title"),
                 resources.getString("guidelines.rendered.dontObscure.description"),
                 "IA-4");
+
+        addItem(GuidelineLevel.NOTE,
+                resources.getString("guidelines.rendered.gamma.title"),
+                resources.getString("guidelines.rendered.gamma.description"),
+                "IC-9");
+
+        addItem(GuidelineLevel.TIP,
+                resources.getString("guidelines.rendered.quantExample.title"),
+                resources.getString("guidelines.rendered.quantExample.description"),
+                "ID-3");
+
+        addItem(GuidelineLevel.TIP,
+                resources.getString("guidelines.rendered.phenotypeRange.title"),
+                resources.getString("guidelines.rendered.phenotypeRange.description"),
+                "ID-5");
 
         addItem(GuidelineLevel.TIP,
                 resources.getString("guidelines.rendered.availability.title"),
@@ -208,6 +238,12 @@ class GuidelinesPane extends ScrollPane {
         if (hasFL) {
             addSeparator();
             addSectionHeader(resources.getString("guidelines.fluorescence.header"));
+
+            // IC-1: Channel annotation for multichannel
+            addItem(GuidelineLevel.TIP,
+                    resources.getString("guidelines.fluorescence.annotateChannels.title"),
+                    resources.getString("guidelines.fluorescence.annotateChannels.description"),
+                    "IC-1");
 
             // Red+green check
             if (hasRedGreenChannels()) {
@@ -248,6 +284,11 @@ class GuidelinesPane extends ScrollPane {
         if (hasBF) {
             addSeparator();
             addSectionHeader(resources.getString("guidelines.brightfield.header"));
+
+            addItem(GuidelineLevel.TIP,
+                    resources.getString("guidelines.brightfield.stainAnnotation.title"),
+                    resources.getString("guidelines.brightfield.stainAnnotation.description"),
+                    "IC-1");
 
             addItem(GuidelineLevel.TIP,
                     resources.getString("guidelines.brightfield.scaleBarColor.title"),
