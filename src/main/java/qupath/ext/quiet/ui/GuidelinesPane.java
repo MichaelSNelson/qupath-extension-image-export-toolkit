@@ -88,6 +88,14 @@ class GuidelinesPane extends ScrollPane {
         subheader.setWrapText(true);
         content.getChildren().add(subheader);
 
+        // QUAREP website link
+        var linkLabel = new Label(resources.getString("guidelines.quarepLink"));
+        linkLabel.setFont(Font.font(null, FontWeight.NORMAL, 10));
+        linkLabel.setTextFill(Color.rgb(30, 100, 180));
+        linkLabel.setStyle("-fx-underline: true; -fx-cursor: hand;");
+        linkLabel.setWrapText(true);
+        content.getChildren().add(linkLabel);
+
         addSeparator();
 
         // Image type summary
@@ -162,15 +170,38 @@ class GuidelinesPane extends ScrollPane {
         // Always show
         addItem(GuidelineLevel.TIP,
                 resources.getString("guidelines.rendered.lossless.title"),
-                resources.getString("guidelines.rendered.lossless.description"));
+                resources.getString("guidelines.rendered.lossless.description"),
+                "ID-1");
 
         addItem(GuidelineLevel.TIP,
                 resources.getString("guidelines.rendered.scaleBar.title"),
-                resources.getString("guidelines.rendered.scaleBar.description"));
+                resources.getString("guidelines.rendered.scaleBar.description"),
+                "IA-1");
 
         addItem(GuidelineLevel.TIP,
                 resources.getString("guidelines.rendered.consistentDisplay.title"),
-                resources.getString("guidelines.rendered.consistentDisplay.description"));
+                resources.getString("guidelines.rendered.consistentDisplay.description"),
+                "IC-3");
+
+        addItem(GuidelineLevel.TIP,
+                resources.getString("guidelines.rendered.dpi.title"),
+                resources.getString("guidelines.rendered.dpi.description"),
+                "ID-1");
+
+        addItem(GuidelineLevel.TIP,
+                resources.getString("guidelines.rendered.annotationExplain.title"),
+                resources.getString("guidelines.rendered.annotationExplain.description"),
+                "IA-2");
+
+        addItem(GuidelineLevel.TIP,
+                resources.getString("guidelines.rendered.dontObscure.title"),
+                resources.getString("guidelines.rendered.dontObscure.description"),
+                "IA-4");
+
+        addItem(GuidelineLevel.TIP,
+                resources.getString("guidelines.rendered.availability.title"),
+                resources.getString("guidelines.rendered.availability.description"),
+                "Avail-1");
 
         // Fluorescence-specific
         boolean hasFL = imageContexts.stream().anyMatch(ImageContext::isFluorescence);
@@ -182,7 +213,8 @@ class GuidelinesPane extends ScrollPane {
             if (hasRedGreenChannels()) {
                 addItem(GuidelineLevel.WARNING,
                         resources.getString("guidelines.fluorescence.redGreen.title"),
-                        resources.getString("guidelines.fluorescence.redGreen.description"));
+                        resources.getString("guidelines.fluorescence.redGreen.description"),
+                        "IC-6");
             }
 
             // Channel listing with contrast advice
@@ -191,7 +223,14 @@ class GuidelinesPane extends ScrollPane {
             // Split channel recommendation
             addItem(GuidelineLevel.TIP,
                     resources.getString("guidelines.fluorescence.splitChannels.title"),
-                    resources.getString("guidelines.fluorescence.splitChannels.description"));
+                    resources.getString("guidelines.fluorescence.splitChannels.description"),
+                    "IC-5");
+
+            // Intensity calibration bar
+            addItem(GuidelineLevel.TIP,
+                    resources.getString("guidelines.fluorescence.calibrationBar.title"),
+                    resources.getString("guidelines.fluorescence.calibrationBar.description"),
+                    "IC-7");
 
             // Multiplex-specific
             int maxCh = imageContexts.stream()
@@ -212,11 +251,13 @@ class GuidelinesPane extends ScrollPane {
 
             addItem(GuidelineLevel.TIP,
                     resources.getString("guidelines.brightfield.scaleBarColor.title"),
-                    resources.getString("guidelines.brightfield.scaleBarColor.description"));
+                    resources.getString("guidelines.brightfield.scaleBarColor.description"),
+                    "IA-1");
 
             addItem(GuidelineLevel.TIP,
                     resources.getString("guidelines.brightfield.display.title"),
-                    resources.getString("guidelines.brightfield.display.description"));
+                    resources.getString("guidelines.brightfield.display.description"),
+                    "IC-2");
         }
     }
 
@@ -438,6 +479,11 @@ class GuidelinesPane extends ScrollPane {
     }
 
     private void addItem(GuidelineLevel level, String title, String description) {
+        addItem(level, title, description, null);
+    }
+
+    private void addItem(GuidelineLevel level, String title, String description,
+                         String quarepRef) {
         // Icon
         String iconText = switch (level) {
             case WARNING -> "[!]";
@@ -460,6 +506,14 @@ class GuidelinesPane extends ScrollPane {
         titleLabel.setWrapText(true);
 
         var titleRow = new HBox(4, icon, titleLabel);
+
+        // QUAREP checklist reference tag
+        if (quarepRef != null && !quarepRef.isBlank()) {
+            var refLabel = new Label("[" + quarepRef + "]");
+            refLabel.setFont(Font.font(null, FontWeight.NORMAL, 9));
+            refLabel.setTextFill(Color.GRAY);
+            titleRow.getChildren().add(refLabel);
+        }
         titleRow.setAlignment(Pos.TOP_LEFT);
 
         var descLabel = new Label(description);

@@ -16,6 +16,18 @@ created by the [QUAREP-LiMi](https://quarep.org/) initiative. These checklists p
 consensus guidelines on image formatting, colors, annotation, and data availability
 for microscopy publications.
 
+QuIET's guidelines panel references specific checklist items from the
+[QUAREP-LiMi WG12 interactive checklists](https://quarep-limi.github.io/WG12_checklists_for_image_publishing/intro.html),
+organized into four categories:
+
+- **Image Format** (ID-1 through ID-5): Cropping, borders, insets, phenotype range
+- **Image Colors & Channels** (IC-1 through IC-9): Channel annotation, brightness/contrast, color-blind accessibility, grayscale panels, intensity calibration bars
+- **Image Annotation** (IA-1 through IA-5): Scale bars, annotation explanation, legibility, data visibility, imaging details
+- **Image Availability** (Avail-1 through Avail-3): Lossless sharing, public repositories, dedicated databases
+
+Each guideline item in QuIET's panel shows its QUAREP checklist code (e.g., `[IC-6]`)
+so users can cross-reference the full guidance at the WG12 website.
+
 Inspiration for QuIET's approach to automated image quality guidance also comes from
 Jan Brocher's [BioVoxxel Figure Tools](https://github.com/biovoxxel/BioVoxxel-Figure-Tools)
 plugin for Fiji/ImageJ, which provides interactive tools for creating
