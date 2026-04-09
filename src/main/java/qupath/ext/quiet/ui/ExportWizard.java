@@ -23,6 +23,8 @@ import javafx.scene.control.ButtonBar;
 import javafx.scene.control.ButtonType;
 import javafx.scene.control.ScrollPane;
 import javafx.scene.control.Separator;
+import javafx.scene.control.ToggleButton;
+import javafx.scene.control.Tooltip;
 import javafx.scene.layout.BorderPane;
 import javafx.scene.layout.HBox;
 import javafx.scene.layout.Priority;
@@ -80,6 +82,7 @@ public class ExportWizard {
     private Button nextButton;
     private Button cancelButton;
     private Button openFolderButton;
+    private ToggleButton simpleModeToggle;
 
     // Current export state
     private ExportCategory selectedCategory;
@@ -154,10 +157,26 @@ public class ExportWizard {
             }
         });
 
+        // Simple / Advanced mode toggle
+        boolean isSimple = QuietPreferences.isSimpleMode();
+        simpleModeToggle = new ToggleButton(isSimple
+                ? resources.getString("toggle.simpleMode.simple")
+                : resources.getString("toggle.simpleMode.advanced"));
+        simpleModeToggle.setSelected(isSimple);
+        simpleModeToggle.setTooltip(new Tooltip(resources.getString("toggle.simpleMode.tooltip")));
+        simpleModeToggle.setStyle("-fx-font-weight: bold;");
+        simpleModeToggle.selectedProperty().addListener((obs, old, simple) -> {
+            QuietPreferences.setSimpleMode(simple);
+            simpleModeToggle.setText(simple
+                    ? resources.getString("toggle.simpleMode.simple")
+                    : resources.getString("toggle.simpleMode.advanced"));
+            applySimpleModeToCurrentStep();
+        });
+
         var spacer = new Region();
         HBox.setHgrow(spacer, Priority.ALWAYS);
 
-        var navBar = new HBox(10, backButton, spacer, openFolderButton, cancelButton, nextButton);
+        var navBar = new HBox(10, simpleModeToggle, backButton, spacer, openFolderButton, cancelButton, nextButton);
         navBar.setAlignment(Pos.CENTER_RIGHT);
         navBar.setPadding(new Insets(10, 0, 0, 0));
 
@@ -241,6 +260,22 @@ public class ExportWizard {
             root.setRight(null);
         }
         updateNavButtons();
+
+        // Toggle is hidden on step 1 (nothing to simplify) and shown on steps 2 & 3
+        simpleModeToggle.setVisible(step != 1);
+        simpleModeToggle.setManaged(step != 1);
+
+        applySimpleModeToCurrentStep();
+    }
+
+    private void applySimpleModeToCurrentStep() {
+        boolean simple = simpleModeToggle.isSelected();
+        renderedConfigPane.setSimpleMode(simple);
+        maskConfigPane.setSimpleMode(simple);
+        rawConfigPane.setSimpleMode(simple);
+        tiledConfigPane.setSimpleMode(simple);
+        objectCropConfigPane.setSimpleMode(simple);
+        imageSelectionPane.setSimpleMode(simple);
     }
 
     private void updateNavButtons() {

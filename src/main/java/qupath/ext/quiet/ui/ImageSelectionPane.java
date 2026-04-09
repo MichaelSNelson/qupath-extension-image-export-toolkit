@@ -74,6 +74,11 @@ public class ImageSelectionPane extends VBox {
     private Label filenamePreviewLabel;
     private CheckBox addToWorkflowCheck;
     private CheckBox exportGeoJsonCheck;
+
+    // Containers promoted for simple mode toggling
+    private HBox prefixSuffixRow;
+    private HBox previewRow;
+    private HBox scriptBox;
     private PublicationAdvicePane advicePane;
     private javafx.scene.control.Button adviceButton;
     private ProgressBar progressBar;
@@ -133,7 +138,7 @@ public class ImageSelectionPane extends VBox {
         HBox.setHgrow(suffixField, Priority.ALWAYS);
         suffixBox.setAlignment(Pos.CENTER_LEFT);
 
-        var prefixSuffixRow = new HBox(15, prefixBox, suffixBox);
+        prefixSuffixRow = new HBox(15, prefixBox, suffixBox);
         HBox.setHgrow(prefixBox, Priority.ALWAYS);
         HBox.setHgrow(suffixBox, Priority.ALWAYS);
 
@@ -142,7 +147,7 @@ public class ImageSelectionPane extends VBox {
         filenamePreviewLabel = new Label();
         filenamePreviewLabel.setTextFill(Color.GRAY);
         filenamePreviewLabel.setFont(Font.font("monospace", 11));
-        var previewRow = new HBox(5, previewTitleLabel, filenamePreviewLabel);
+        previewRow = new HBox(5, previewTitleLabel, filenamePreviewLabel);
         previewRow.setAlignment(Pos.CENTER_LEFT);
 
         // Update preview when prefix/suffix change
@@ -195,7 +200,7 @@ public class ImageSelectionPane extends VBox {
             if (scriptSaveHandler != null) scriptSaveHandler.run();
         });
         saveScriptButton.setTooltip(createTooltip("tooltip.step3.saveScript"));
-        var scriptBox = new HBox(10, copyScriptButton, saveScriptButton);
+        scriptBox = new HBox(10, copyScriptButton, saveScriptButton);
 
         // Workflow checkbox
         addToWorkflowCheck = new CheckBox(resources.getString("step3.label.addToWorkflow"));
@@ -548,5 +553,23 @@ public class ImageSelectionPane extends VBox {
 
     public void setScriptSaveHandler(Runnable handler) {
         this.scriptSaveHandler = handler;
+    }
+
+    /**
+     * Show or hide advanced controls for simple mode.
+     * Hides prefix/suffix, filename preview, workflow/GeoJSON checkboxes, and script buttons.
+     */
+    public void setSimpleMode(boolean simple) {
+        boolean show = !simple;
+        prefixSuffixRow.setVisible(show);
+        prefixSuffixRow.setManaged(show);
+        previewRow.setVisible(show);
+        previewRow.setManaged(show);
+        addToWorkflowCheck.setVisible(show);
+        addToWorkflowCheck.setManaged(show);
+        exportGeoJsonCheck.setVisible(show);
+        exportGeoJsonCheck.setManaged(show);
+        scriptBox.setVisible(show);
+        scriptBox.setManaged(show);
     }
 }

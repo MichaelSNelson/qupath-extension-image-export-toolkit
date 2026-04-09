@@ -46,6 +46,11 @@ public class ObjectCropConfigPane extends VBox {
     private ComboBox<OutputFormat> formatCombo;
     private ListView<TiledConfigPane.ClassificationItem> classificationList;
 
+    // Labels promoted for simple mode toggling
+    private Label paddingLabel;
+    private Label downsampleLabel;
+    private Label labelFormatLabel;
+
     public ObjectCropConfigPane(QuPathGUI qupath) {
         this.qupath = qupath;
         setSpacing(10);
@@ -99,7 +104,8 @@ public class ObjectCropConfigPane extends VBox {
         row++;
 
         // Padding
-        grid.add(new Label(resources.getString("objectCrops.label.cropPadding")), 0, row);
+        paddingLabel = new Label(resources.getString("objectCrops.label.cropPadding"));
+        grid.add(paddingLabel, 0, row);
         paddingSpinner = new Spinner<>(new SpinnerValueFactory.IntegerSpinnerValueFactory(
                 0, 128, 0, 4));
         paddingSpinner.setEditable(true);
@@ -108,7 +114,8 @@ public class ObjectCropConfigPane extends VBox {
         row++;
 
         // Downsample
-        grid.add(new Label(resources.getString("objectCrops.label.cropDownsample")), 0, row);
+        downsampleLabel = new Label(resources.getString("objectCrops.label.cropDownsample"));
+        grid.add(downsampleLabel, 0, row);
         downsampleCombo = new ComboBox<>(FXCollections.observableArrayList(
                 1.0, 2.0, 4.0, 8.0));
         downsampleCombo.setEditable(true);
@@ -130,7 +137,8 @@ public class ObjectCropConfigPane extends VBox {
         row++;
 
         // Label format
-        grid.add(new Label(resources.getString("objectCrops.label.labelFormat")), 0, row);
+        labelFormatLabel = new Label(resources.getString("objectCrops.label.labelFormat"));
+        grid.add(labelFormatLabel, 0, row);
         labelFormatCombo = new ComboBox<>(FXCollections.observableArrayList(
                 ObjectCropConfig.LabelFormat.values()));
         labelFormatCombo.setValue(ObjectCropConfig.LabelFormat.SUBDIRECTORY);
@@ -275,5 +283,25 @@ public class ObjectCropConfigPane extends VBox {
                 .outputDirectory(outputDir)
                 .selectedClasses(selectedClasses)
                 .build();
+    }
+
+    /**
+     * Show or hide advanced controls for simple mode.
+     * Hides padding, downsample, and label format rows.
+     */
+    public void setSimpleMode(boolean simple) {
+        boolean show = !simple;
+        paddingLabel.setVisible(show);
+        paddingLabel.setManaged(show);
+        paddingSpinner.setVisible(show);
+        paddingSpinner.setManaged(show);
+        downsampleLabel.setVisible(show);
+        downsampleLabel.setManaged(show);
+        downsampleCombo.setVisible(show);
+        downsampleCombo.setManaged(show);
+        labelFormatLabel.setVisible(show);
+        labelFormatLabel.setManaged(show);
+        labelFormatCombo.setVisible(show);
+        labelFormatCombo.setManaged(show);
     }
 }

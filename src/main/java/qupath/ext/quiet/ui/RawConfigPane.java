@@ -352,4 +352,19 @@ public class RawConfigPane extends VBox {
         @Override
         public String toString() { return index + ": " + name; }
     }
+
+    /**
+     * Show or hide advanced controls for simple mode.
+     * Hides padding, pyramid options, and channel selection.
+     */
+    public void setSimpleMode(boolean simple) {
+        paddingLabel.setVisible(!simple);
+        paddingLabel.setManaged(!simple);
+        paddingSpinner.setVisible(!simple);
+        paddingSpinner.setManaged(!simple);
+        pyramidSection.setVisible(!simple);
+        pyramidSection.setManaged(!simple);
+        channelSection.setVisible(!simple);
+        channelSection.setManaged(!simple);
+    }
 }

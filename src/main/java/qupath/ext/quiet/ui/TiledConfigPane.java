@@ -57,12 +57,17 @@ public class TiledConfigPane extends VBox {
     private ListView<ClassificationItem> labelClassificationList;
 
     // Filter settings
+    private Label parentFilterLabel;
     private ComboBox<TiledExportConfig.ParentObjectFilter> parentFilterCombo;
     private CheckBox annotatedOnlyCheck;
     private CheckBox exportJsonCheck;
 
     // Label section container for visibility toggling
     private VBox labelSection;
+
+    // Label detail controls (hidden in simple mode)
+    private Label labelMaskTypeLabel;
+    private Label labelObjectSourceLabel;
 
     public TiledConfigPane(QuPathGUI qupath) {
         this.qupath = qupath;
@@ -134,7 +139,8 @@ public class TiledConfigPane extends VBox {
         row++;
 
         // Parent filter
-        tileGrid.add(new Label(resources.getString("tiled.label.parentFilter")), 0, row);
+        parentFilterLabel = new Label(resources.getString("tiled.label.parentFilter"));
+        tileGrid.add(parentFilterLabel, 0, row);
         parentFilterCombo = new ComboBox<>(FXCollections.observableArrayList(
                 TiledExportConfig.ParentObjectFilter.values()));
         parentFilterCombo.setValue(TiledExportConfig.ParentObjectFilter.ANNOTATIONS);
@@ -188,7 +194,8 @@ public class TiledConfigPane extends VBox {
         lRow++;
 
         // Label mask type
-        labelGrid.add(new Label(resources.getString("tiled.label.labelMaskType")), 0, lRow);
+        labelMaskTypeLabel = new Label(resources.getString("tiled.label.labelMaskType"));
+        labelGrid.add(labelMaskTypeLabel, 0, lRow);
         labelMaskTypeCombo = new ComboBox<>(FXCollections.observableArrayList(
                 MaskExportConfig.MaskType.values()));
         labelMaskTypeCombo.setValue(MaskExportConfig.MaskType.BINARY);
@@ -213,7 +220,8 @@ public class TiledConfigPane extends VBox {
         lRow++;
 
         // Label object source
-        labelGrid.add(new Label(resources.getString("tiled.label.labelObjectSource")), 0, lRow);
+        labelObjectSourceLabel = new Label(resources.getString("tiled.label.labelObjectSource"));
+        labelGrid.add(labelObjectSourceLabel, 0, lRow);
         labelObjectSourceCombo = new ComboBox<>(FXCollections.observableArrayList(
                 MaskExportConfig.ObjectSource.values()));
         labelObjectSourceCombo.setValue(MaskExportConfig.ObjectSource.ANNOTATIONS);
@@ -407,5 +415,27 @@ public class TiledConfigPane extends VBox {
 
         @Override
         public String toString() { return className; }
+    }
+
+    /**
+     * Show or hide advanced controls for simple mode.
+     * Hides parent filter, export GeoJSON, and detailed label config controls.
+     */
+    public void setSimpleMode(boolean simple) {
+        boolean show = !simple;
+        parentFilterLabel.setVisible(show);
+        parentFilterLabel.setManaged(show);
+        parentFilterCombo.setVisible(show);
+        parentFilterCombo.setManaged(show);
+        exportJsonCheck.setVisible(show);
+        exportJsonCheck.setManaged(show);
+        labelMaskTypeLabel.setVisible(show);
+        labelMaskTypeLabel.setManaged(show);
+        labelMaskTypeCombo.setVisible(show);
+        labelMaskTypeCombo.setManaged(show);
+        labelObjectSourceLabel.setVisible(show);
+        labelObjectSourceLabel.setManaged(show);
+        labelObjectSourceCombo.setVisible(show);
+        labelObjectSourceCombo.setManaged(show);
     }
 }

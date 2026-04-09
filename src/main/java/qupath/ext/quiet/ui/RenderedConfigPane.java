@@ -178,10 +178,14 @@ public class RenderedConfigPane extends VBox {
     // Section TitledPanes needing visibility toggling
     private TitledPane imageSettingsSection;
     private TitledPane overlaySourceSection;
+    private TitledPane objectOverlaysSection;
     private TitledPane splitChannelSection;
     private TitledPane scaleBarSection;
     private TitledPane colorScaleBarSection;
     private TitledPane infoLabelSection;
+
+    // Simple mode state
+    private boolean simpleMode;
 
     public RenderedConfigPane(QuPathGUI qupath) {
         this.qupath = qupath;
@@ -200,7 +204,7 @@ public class RenderedConfigPane extends VBox {
 
         imageSettingsSection = buildImageSettingsSection();
         overlaySourceSection = buildOverlaySourceSection();
-        var objectOverlaysSection = buildObjectOverlaysSection();
+        objectOverlaysSection = buildObjectOverlaysSection();
         splitChannelSection = buildSplitChannelSection();
         scaleBarSection = buildScaleBarSection();
         colorScaleBarSection = buildColorScaleBarSection();
@@ -967,6 +971,7 @@ public class RenderedConfigPane extends VBox {
         } else {
             updatePanelLabelVisibility(showPanelLabelCheck.isSelected());
         }
+        applySimpleModeOverrides();
     }
 
     private void updateModeVisibility(RenderedExportConfig.RenderMode mode) {
@@ -1008,6 +1013,7 @@ public class RenderedConfigPane extends VBox {
         } else {
             updateColorScaleBarVisibility(showColorScaleBarCheck.isSelected());
         }
+        applySimpleModeOverrides();
     }
 
     private void updateDisplaySettingsVisibility(DisplaySettingsMode mode) {
@@ -1022,6 +1028,7 @@ public class RenderedConfigPane extends VBox {
         matchedPercentileLabel.setManaged(isMatched);
         matchedPercentileSpinner.setVisible(isMatched);
         matchedPercentileSpinner.setManaged(isMatched);
+        applySimpleModeOverrides();
     }
 
     private void updateScaleBarVisibility(boolean showScaleBar) {
@@ -1043,6 +1050,7 @@ public class RenderedConfigPane extends VBox {
         scaleBarBackgroundBoxCheck.setManaged(showScaleBar);
         scaleBarColorHintLabel.setVisible(showScaleBar);
         scaleBarColorHintLabel.setManaged(showScaleBar);
+        applySimpleModeOverrides();
     }
 
     private void updateColorScaleBarVisibility(boolean show) {
@@ -1056,6 +1064,7 @@ public class RenderedConfigPane extends VBox {
         colorScaleBarFontSizeSpinner.setManaged(show);
         colorScaleBarBoldCheck.setVisible(show);
         colorScaleBarBoldCheck.setManaged(show);
+        applySimpleModeOverrides();
     }
 
     private void updatePanelLabelVisibility(boolean show) {
@@ -1073,6 +1082,7 @@ public class RenderedConfigPane extends VBox {
         panelLabelFontSizeSpinner.setManaged(show);
         panelLabelBoldCheck.setVisible(show);
         panelLabelBoldCheck.setManaged(show);
+        applySimpleModeOverrides();
     }
 
     private void updateInfoLabelVisibility(boolean show) {
@@ -1095,6 +1105,7 @@ public class RenderedConfigPane extends VBox {
         infoLabelBoldCheck.setVisible(show);
         infoLabelBoldCheck.setManaged(show);
         if (show) updateInfoLabelPreview();
+        applySimpleModeOverrides();
     }
 
     /**
@@ -1192,6 +1203,7 @@ public class RenderedConfigPane extends VBox {
         dpiSpinner.setManaged(isDpi);
         dpiNoteLabel.setVisible(isDpi);
         dpiNoteLabel.setManaged(isDpi);
+        applySimpleModeOverrides();
     }
 
     private void updateFormatInfo(OutputFormat format) {
@@ -1235,6 +1247,98 @@ public class RenderedConfigPane extends VBox {
         if (isPerAnnotation) {
             populateAnnotationClassifications();
         }
+        applySimpleModeOverrides();
+    }
+
+    /**
+     * Show or hide advanced controls for simple mode.
+     * All settings keep their values when switching modes.
+     */
+    public void setSimpleMode(boolean simple) {
+        this.simpleMode = simple;
+        applySimpleModeOverrides();
+    }
+
+    /**
+     * Re-hide controls that should be hidden in simple mode.
+     * Only hides, never shows - safe to call after any visibility update.
+     */
+    private void applySimpleModeOverrides() {
+        if (!simpleMode) return;
+        // Opacity
+        opacitySlider.setVisible(false);
+        opacitySlider.setManaged(false);
+        opacityValueLabel.setVisible(false);
+        opacityValueLabel.setManaged(false);
+        // Display settings (preset/matched percentile)
+        displaySettingsCombo.setVisible(false);
+        displaySettingsCombo.setManaged(false);
+        presetLabel.setVisible(false);
+        presetLabel.setManaged(false);
+        presetBox.setVisible(false);
+        presetBox.setManaged(false);
+        matchedPercentileLabel.setVisible(false);
+        matchedPercentileLabel.setManaged(false);
+        matchedPercentileSpinner.setVisible(false);
+        matchedPercentileSpinner.setManaged(false);
+        // DPI/resolution mode
+        resolutionModeCombo.setVisible(false);
+        resolutionModeCombo.setManaged(false);
+        resolutionModeLabel.setVisible(false);
+        resolutionModeLabel.setManaged(false);
+        dpiLabel.setVisible(false);
+        dpiLabel.setManaged(false);
+        dpiSpinner.setVisible(false);
+        dpiSpinner.setManaged(false);
+        dpiNoteLabel.setVisible(false);
+        dpiNoteLabel.setManaged(false);
+        // Padding
+        paddingLabel.setVisible(false);
+        paddingLabel.setManaged(false);
+        paddingSpinner.setVisible(false);
+        paddingSpinner.setManaged(false);
+        // Overlay source section (classifier/density map sub-options)
+        overlaySourceSection.setVisible(false);
+        overlaySourceSection.setManaged(false);
+        // Object overlay details (fill annotations/show names)
+        fillAnnotationsCheck.setVisible(false);
+        fillAnnotationsCheck.setManaged(false);
+        showNamesCheck.setVisible(false);
+        showNamesCheck.setManaged(false);
+        // Split channels section
+        splitChannelSection.setVisible(false);
+        splitChannelSection.setManaged(false);
+        // Scale bar styling (keep show checkbox visible; hide styling controls)
+        scaleBarPositionLabel.setVisible(false);
+        scaleBarPositionLabel.setManaged(false);
+        scaleBarPositionCombo.setVisible(false);
+        scaleBarPositionCombo.setManaged(false);
+        scaleBarColorLabel.setVisible(false);
+        scaleBarColorLabel.setManaged(false);
+        scaleBarColorPicker.setVisible(false);
+        scaleBarColorPicker.setManaged(false);
+        scaleBarFontSizeLabel.setVisible(false);
+        scaleBarFontSizeLabel.setManaged(false);
+        scaleBarFontSizeSpinner.setVisible(false);
+        scaleBarFontSizeSpinner.setManaged(false);
+        scaleBarBoldCheck.setVisible(false);
+        scaleBarBoldCheck.setManaged(false);
+        scaleBarBackgroundBoxCheck.setVisible(false);
+        scaleBarBackgroundBoxCheck.setManaged(false);
+        scaleBarColorHintLabel.setVisible(false);
+        scaleBarColorHintLabel.setManaged(false);
+        // Color scale bar section
+        colorScaleBarSection.setVisible(false);
+        colorScaleBarSection.setManaged(false);
+        // Info label section
+        infoLabelSection.setVisible(false);
+        infoLabelSection.setManaged(false);
+        // Channel legend
+        showChannelLegendCheck.setVisible(false);
+        showChannelLegendCheck.setManaged(false);
+        // Format info note
+        formatInfoLabel.setVisible(false);
+        formatInfoLabel.setManaged(false);
     }
 
     private void populateAnnotationClassifications() {

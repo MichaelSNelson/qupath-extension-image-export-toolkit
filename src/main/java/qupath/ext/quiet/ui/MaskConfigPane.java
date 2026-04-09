@@ -60,6 +60,7 @@ public class MaskConfigPane extends VBox {
     private Label classificationsLabel;
     private VBox classificationsBox;
     private TitledPane classificationsSection;
+    private TitledPane labelOptionsSection;
     private Label grayscaleLutLabel;
     private Label boundaryThicknessLabel;
 
@@ -219,7 +220,7 @@ public class MaskConfigPane extends VBox {
         skipEmptyImagesCheck = new CheckBox(resources.getString("mask.label.skipEmpty"));
         labelGrid.add(skipEmptyImagesCheck, 1, lRow);
 
-        var labelOptionsSection = SectionBuilder.createSection(
+        labelOptionsSection = SectionBuilder.createSection(
                 resources.getString("mask.section.labelOptions"), true, labelGrid);
 
         // --- Section 3: Classifications ---
@@ -400,5 +401,14 @@ public class MaskConfigPane extends VBox {
 
         @Override
         public String toString() { return className; }
+    }
+
+    /**
+     * Show or hide advanced controls for simple mode.
+     * Hides the entire Label Options section. All values are preserved.
+     */
+    public void setSimpleMode(boolean simple) {
+        labelOptionsSection.setVisible(!simple);
+        labelOptionsSection.setManaged(!simple);
     }
 }

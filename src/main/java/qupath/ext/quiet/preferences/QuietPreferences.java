@@ -27,6 +27,9 @@ public class QuietPreferences {
     private static final BooleanProperty exportGeoJson =
             PathPrefs.createPersistentPreference(PREFIX + "exportGeoJson", false);
 
+    private static final BooleanProperty simpleMode =
+            PathPrefs.createPersistentPreference(PREFIX + "simpleMode", true);
+
     private static final DoubleProperty wizardWidth =
             PathPrefs.createPersistentPreference(PREFIX + "wizardWidth", 750.0);
 
@@ -335,6 +338,10 @@ public class QuietPreferences {
     public static BooleanProperty exportGeoJsonProperty() { return exportGeoJson; }
     public static boolean isExportGeoJson() { return exportGeoJson.get(); }
     public static void setExportGeoJson(boolean value) { exportGeoJson.set(value); }
+
+    public static BooleanProperty simpleModeProperty() { return simpleMode; }
+    public static boolean isSimpleMode() { return simpleMode.get(); }
+    public static void setSimpleMode(boolean value) { simpleMode.set(value); }
 
     public static DoubleProperty wizardWidthProperty() { return wizardWidth; }
     public static double getWizardWidth() { return wizardWidth.get(); }
