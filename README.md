@@ -3,7 +3,7 @@
 [![Release](https://img.shields.io/github/v/release/uw-loci/qupath-extension-image-export-toolkit?include_prereleases)](https://github.com/uw-loci/qupath-extension-image-export-toolkit/releases)
 [![License](https://img.shields.io/github/license/uw-loci/qupath-extension-image-export-toolkit)](LICENSE)
 
-A [QuPath](https://qupath.github.io/) extension for batch exporting images in multiple formats for machine learning training and analysis.
+A [QuPath](https://qupath.github.io/) extension for batch exporting images in multiple formats for use in publication, for review, and for machine learning training and analysis.
 
 QuIET provides a guided wizard UI for exporting rendered overlays, label/instance masks, raw pixel data, tiled image+label pairs, and per-object classification crops -- all with self-contained Groovy script generation so every export is reproducible and editable.
 
