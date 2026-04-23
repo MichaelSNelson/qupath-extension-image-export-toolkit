@@ -9,7 +9,37 @@ QuIET provides a guided wizard UI for exporting rendered overlays, label/instanc
 
 ![QuIET interface](documentation/images/QUIET-interface.png)
 
-## Publication-Quality Image Guidelines
+## Requirements
+
+- **QuPath 0.6.0** or later
+- Java 21+
+
+## Installation
+
+1. Download the latest `qupath-extension-image-export-toolkit-*-all.jar` from [Releases](https://github.com/uw-loci/qupath-extension-image-export-toolkit/releases)
+2. Drag the JAR onto the running QuPath window, **or** copy it into your QuPath `extensions/` directory
+3. Restart QuPath
+
+The extension appears under **Extensions > QuIET > Export Images...**
+
+> The menu item is disabled until a project with at least one image is open.
+
+## Quick Start
+
+1. Open a QuPath project containing annotated images
+2. Go to **Extensions > QuIET > Export Images...**
+3. **Step 1** -- Choose an export category (Rendered, Mask, Raw, Tiled, or Object Crops)
+4. **Step 2** -- Configure export settings (grouped into collapsible sections). A QUAREP-LiMi guidelines panel on the right provides context-sensitive recommendations based on your project's images.
+5. **Step 3** -- Select images, choose output directory, review Publication Advice, and click **Export**
+
+Every export also generates a **Groovy script** that you can copy, save, and re-run from QuPath's built-in script editor -- no extension required.
+
+**Simple vs Advanced mode** -- the navigation bar has a Simple / Advanced toggle. Simple mode (the default on first run) hides rarely-used controls to reduce clutter; Advanced mode exposes every option. The toggle persists across QuPath sessions and applies to every step. If a section below seems to be missing settings, flip to Advanced.
+
+---
+
+<details>
+<summary><h2>Publication-Quality Image Guidelines</h2></summary>
 
 QuIET was developed in support of the community-developed checklists for publishing
 images and image analyses
@@ -67,42 +97,18 @@ without memorizing the advice.
 All checks are advisory -- QuIET will never block an export, but helps researchers
 produce clearer, more reproducible microscopy figures.
 
-## Requirements
-
-- **QuPath 0.6.0** or later
-- Java 21+
-
-## Installation
-
-1. Download the latest `qupath-extension-image-export-toolkit-*-all.jar` from [Releases](https://github.com/uw-loci/qupath-extension-image-export-toolkit/releases)
-2. Drag the JAR onto the running QuPath window, **or** copy it into your QuPath `extensions/` directory
-3. Restart QuPath
-
-The extension appears under **Extensions > QuIET > Export Images...**
-
-> The menu item is disabled until a project with at least one image is open.
-
-## Quick Start
-
-1. Open a QuPath project containing annotated images
-2. Go to **Extensions > QuIET > Export Images...**
-3. **Step 1** -- Choose an export category (Rendered, Mask, Raw, Tiled, or Object Crops)
-4. **Step 2** -- Configure export settings (grouped into collapsible sections). A QUAREP-LiMi guidelines panel on the right provides context-sensitive recommendations based on your project's images.
-5. **Step 3** -- Select images, choose output directory, review Publication Advice, and click **Export**
-
-Every export also generates a **Groovy script** that you can copy, save, and re-run from QuPath's built-in script editor -- no extension required.
-
-### Simple vs Advanced mode
-
-The navigation bar has a **Simple / Advanced** toggle. Simple mode (the default on first run) hides rarely-used controls to reduce clutter; Advanced mode exposes every option. The toggle persists across QuPath sessions and applies to every step of the wizard. If a section seems to be missing settings that the docs below describe, flip to Advanced.
+</details>
 
 ---
 
 ## Export Categories
 
-### Rendered Image
+<details>
+<summary><h3>Rendered Image</h3></summary>
 
 Export images with visual overlays composited onto the base image.
+
+![Rendered export configuration with QUAREP guidelines panel](documentation/images/RenderedImageExport.png)
 
 | Option | Description |
 |--------|-------------|
@@ -119,9 +125,10 @@ Export images with visual overlays composited onto the base image.
 | **Downsample** | Resolution factor (1x = full resolution, 4x = quarter, etc.) |
 | **Format** | PNG, TIFF, JPEG, OME-TIFF, OME-TIFF Pyramid, SVG |
 
-#### Display Settings
+<details>
+<summary><b>Display Settings</b></summary>
 
-By default, rendered exports now apply per-image brightness/contrast and channel visibility settings -- so fluorescence images look like they do in the QuPath viewer instead of appearing as raw pixel data.
+By default, rendered exports apply per-image brightness/contrast and channel visibility settings -- so fluorescence images look like they do in the QuPath viewer instead of appearing as raw pixel data.
 
 | Mode | Description |
 |------|-------------|
@@ -130,7 +137,10 @@ By default, rendered exports now apply per-image brightness/contrast and channel
 | **Saved Preset** | Loads a named B&C preset saved in the project (via the Brightness & Contrast dialog's save button) and applies it to all images. |
 | **Raw (No Adjustments)** | Exports raw pixel data with no display transforms. This was the only behavior prior to v0.2.1. |
 
-#### Annotation Region Export
+</details>
+
+<details>
+<summary><b>Annotation Region Export</b></summary>
 
 Instead of exporting the whole image, you can export individual annotation regions as separate cropped panels -- ideal for publication figures showing specific tissue features.
 
@@ -141,7 +151,10 @@ Instead of exporting the whole image, you can export individual annotation regio
 
 When "All annotations" is selected, each annotation's bounding box is exported as a separate image file, with all overlays (classifier, objects, density map, scale bar, panel label) applied to the cropped region. Padding is clamped to image bounds.
 
-#### Scale Bar
+</details>
+
+<details>
+<summary><b>Scale Bar</b></summary>
 
 Rendered exports can optionally include a burned-in scale bar with text label. The scale bar automatically picks a "nice" length (e.g., 50 um, 200 um, 1 mm) targeting roughly 15% of the image width, and formats the label with appropriate units.
 
@@ -160,7 +173,10 @@ The scale bar requires pixel calibration in the image metadata. If an image has 
 
 > **Note:** Scale bars are only available for rendered exports. Mask, raw, and tiled exports preserve exact pixel values and must not be modified.
 
-#### Color Scale Bar
+</details>
+
+<details>
+<summary><b>Color Scale Bar</b></summary>
 
 For density map overlay mode, a color-mapped legend can be burned in showing the value range with min/max labels and a gradient swatch matching the selected colormap.
 
@@ -173,7 +189,10 @@ For density map overlay mode, a color-mapped legend can be burned in showing the
 
 The color scale bar is only available in density map overlay mode.
 
-#### Panel Labels
+</details>
+
+<details>
+<summary><b>Panel Labels</b></summary>
 
 Add automatic letter labels (A, B, C, ...) to exported images for multi-panel publication figures.
 
@@ -187,7 +206,10 @@ Add automatic letter labels (A, B, C, ...) to exported images for multi-panel pu
 
 Panel labels are drawn with a luminance-based contrast outline for visibility on any background. In batch export with auto-increment, the first image receives "A", the second "B", and so on (extending to "AA", "AB"... after "Z").
 
-#### Info Label
+</details>
+
+<details>
+<summary><b>Info Label</b></summary>
 
 Add a per-image metadata text stamp to exported images. The template is resolved per-image at export time, so each image gets its own metadata values.
 
@@ -213,7 +235,10 @@ Add a per-image metadata text stamp to exported images. The template is resolved
 
 A **live preview** below the template field resolves the template against the currently open image and warns about empty or unrecognized placeholders. An inline placeholder reference is always visible (not hidden behind a tooltip).
 
-#### Split Channels & Channel Legend
+</details>
+
+<details>
+<summary><b>Split Channels & Channel Legend</b></summary>
 
 For multi-channel fluorescence images, the rendered export can emit one panel per channel plus a merged panel, which is the standard publication layout for multiplex data.
 
@@ -226,7 +251,12 @@ For multi-channel fluorescence images, the rendered export can emit one panel pe
 | **Channel color legend swatch** | Draw a small colored rectangle with the channel name on each individual channel panel, so the channel is identifiable even in grayscale. |
 | **Show channel/stain legend** | Draw a full channel/stain legend on the exported image (available for all rendered exports, not only split-channel). |
 
-### Label / Mask
+</details>
+
+</details>
+
+<details>
+<summary><h3>Label / Mask</h3></summary>
 
 Export segmentation masks from QuPath's object hierarchy using `LabeledImageServer`.
 
@@ -249,7 +279,10 @@ Additional mask options:
 
 > **Note:** JPEG is intentionally excluded from mask format options because lossy compression alters pixel values, which would corrupt the integer label encoding. Masks are rendered from vector geometries at the requested downsample, so label values are always exact regardless of resolution.
 
-### Raw Pixel Data
+</details>
+
+<details>
+<summary><h3>Raw Pixel Data</h3></summary>
 
 Export unprocessed pixel data at configurable resolution.
 
@@ -264,7 +297,10 @@ Export unprocessed pixel data at configurable resolution.
 
 > **Note:** OME-TIFF Pyramid export uses `OMEPyramidWriter` from `qupath-extension-bioformats`. If that extension is not installed, QuIET falls back to flat OME-TIFF via `ImageWriterTools`.
 
-### Tiled Export (ML Training)
+</details>
+
+<details>
+<summary><h3>Tiled Export (ML Training)</h3></summary>
 
 Export fixed-size image + label tile pairs for deep learning frameworks (StarDist, CellPose, HoVer-Net, etc.) using QuPath's `TileExporter` API.
 
@@ -280,7 +316,10 @@ Export fixed-size image + label tile pairs for deep learning frameworks (StarDis
 | **Annotated only** | Skip tiles that contain no annotated objects |
 | **GeoJSON per tile** | Export object geometries for each tile |
 
-### Object Crops (Classification Training)
+</details>
+
+<details>
+<summary><h3>Object Crops (Classification Training)</h3></summary>
 
 Export individual object crops organized by classification for training image classifiers (e.g., cell type classifiers, detection quality filters).
 
@@ -299,15 +338,14 @@ Output structure depends on the label format:
 - **Subdirectory**: `crops/ClassName/image_obj001.png`
 - **Filename prefix**: `crops/ClassName_image_obj001.png`
 
-### GeoJSON Export
+</details>
 
-An orthogonal option available alongside any export category. When enabled, QuIET exports all annotations and detections as a `.geojson` file per image -- useful for COCO/YOLO-style training pipelines that need geometry alongside image data.
+<details>
+<summary><h3>GeoJSON & Metadata Sidecars</h3></summary>
 
-Enable via the **"Also export GeoJSON annotations"** checkbox on the image selection step.
+**GeoJSON Export** -- An orthogonal option available alongside any export category. When enabled, QuIET exports all annotations and detections as a `.geojson` file per image -- useful for COCO/YOLO-style training pipelines that need geometry alongside image data. Enable via the **"Also export GeoJSON annotations"** checkbox on the image selection step.
 
-### Metadata Sidecar Files
-
-Every batch export automatically generates a human-readable `.txt` metadata file alongside the exported images. These files provide essential context for interpreting exports later, especially when shared with collaborators or loaded into external tools.
+**Metadata Sidecar Files** -- Every batch export automatically generates a human-readable `.txt` metadata file alongside the exported images. These files provide essential context for interpreting exports later, especially when shared with collaborators or loaded into external tools.
 
 **Mask exports** produce `mask_legend.txt` containing:
 - Label-to-class mapping (e.g., `1 = Tumor`, `2 = Stroma` for grayscale labels)
@@ -322,9 +360,12 @@ Every batch export automatically generates a human-readable `.txt` metadata file
 
 Images with different channel configurations are automatically grouped in the metadata file. Metadata writing never interrupts the export -- failures are logged but silently ignored.
 
+</details>
+
 ---
 
-## Script Generation
+<details>
+<summary><h2>Script Generation</h2></summary>
 
 Every export produces a **self-contained Groovy script** that:
 
@@ -336,9 +377,10 @@ Every export produces a **self-contained Groovy script** that:
 
 Use the **Copy Script** or **Save Script...** buttons in the wizard to capture the generated script before or after running an export.
 
----
+</details>
 
-## Output Structure
+<details>
+<summary><h2>Output Structure</h2></summary>
 
 Exports are written to a configurable output directory. The default structure under a QuPath project is:
 
@@ -366,17 +408,19 @@ Exports are written to a configurable output directory. The default structure un
 
 Filenames are sanitized using QuPath's `GeneralTools.stripInvalidFilenameChars()` for cross-platform compatibility.
 
----
+</details>
 
-## Preferences
+<details>
+<summary><h2>Preferences</h2></summary>
 
 All wizard settings are automatically persisted across QuPath sessions. When you reopen the export wizard, your previous configuration (mask type, downsample, format, padding, etc.) is restored.
 
 Preferences are stored in QuPath's standard preference system under the `quiet.*` namespace.
 
----
+</details>
 
-## Building from Source
+<details>
+<summary><h2>Building from Source</h2></summary>
 
 ```bash
 # Clone the repository
@@ -465,9 +509,10 @@ src/main/resources/
     qupath.lib.gui.extensions.QuPathExtension
 ```
 
----
+</details>
 
-## Known Limitations
+<details>
+<summary><h2>Known Limitations</h2></summary>
 
 - **OME-TIFF Pyramid** requires `qupath-extension-bioformats` to be installed alongside QuIET. Without it, pyramid exports fall back to flat OME-TIFF.
 - **SVG export** uses the JFreeSVG library for vector rendering. The base image is embedded as a raster element; annotations and overlays are rendered as vector paths. SVG is only available for rendered exports.
@@ -477,7 +522,10 @@ src/main/resources/
 - Density map overlay requires a density map saved in the QuPath project (created via **Analyze > Density maps**).
 - **Display Settings** "Current Viewer" mode requires an image to be open in the viewer at export time. "Saved Preset" mode requires presets saved via QuPath's Brightness & Contrast dialog.
 
-## Roadmap
+</details>
+
+<details>
+<summary><h2>Roadmap</h2></summary>
 
 Future releases may include:
 
@@ -501,6 +549,8 @@ Future releases may include:
 - ~~Simple / Advanced UI mode~~ -- single-click toggle to hide or reveal rarely-used controls across every step
 
 See `documentation/POTENTIAL_FEATURES.md` for detailed implementation plans.
+
+</details>
 
 ---
 
