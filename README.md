@@ -7,6 +7,8 @@ A [QuPath](https://qupath.github.io/) extension for batch exporting images in mu
 
 QuIET provides a guided wizard UI for exporting rendered overlays, label/instance masks, raw pixel data, tiled image+label pairs, and per-object classification crops -- all with self-contained Groovy script generation so every export is reproducible and editable.
 
+![QuIET interface](documentation/images/QUIET-interface.png)
+
 ## Publication-Quality Image Guidelines
 
 QuIET was developed in support of the community-developed checklists for publishing
