@@ -198,18 +198,22 @@ public class ScaleBarRenderer {
     private static String formatLabel(double microns) {
         if (microns >= 1000) {
             double mm = microns / 1000.0;
-            if (mm == Math.floor(mm)) {
+            if (isWholeNumber(mm)) {
                 return String.format("%d mm", (int) mm);
             }
             return String.format("%.1f mm", mm);
         }
-        if (microns == Math.floor(microns)) {
+        if (isWholeNumber(microns)) {
             return String.format("%d um", (int) microns);
         }
         if (microns >= 1) {
             return String.format("%.1f um", microns);
         }
         return String.format("%.2f um", microns);
+    }
+
+    private static boolean isWholeNumber(double value) {
+        return Math.abs(value - Math.floor(value)) < 1e-9;
     }
 
 }

@@ -134,6 +134,9 @@ public class ObjectCropExporter {
             case CELLS -> hierarchy.getCellObjects().stream()
                     .map(o -> (PathObject) o)
                     .collect(Collectors.toList());
+            case ANNOTATIONS -> hierarchy.getAnnotationObjects().stream()
+                    .map(o -> (PathObject) o)
+                    .collect(Collectors.toList());
             case ALL -> {
                 var all = new java.util.ArrayList<PathObject>();
                 all.addAll(hierarchy.getDetectionObjects());

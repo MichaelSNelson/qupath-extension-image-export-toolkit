@@ -83,6 +83,7 @@ class ObjectCropScriptGenerator {
         appendLine(sb, "switch (objectType) {");
         appendLine(sb, "    case 'DETECTIONS': objects = getDetectionObjects(); break");
         appendLine(sb, "    case 'CELLS': objects = getCellObjects(); break");
+        appendLine(sb, "    case 'ANNOTATIONS': objects = getAnnotationObjects(); break");
         appendLine(sb, "    case 'ALL': objects = getDetectionObjects() + getCellObjects().findAll { !(it instanceof qupath.lib.objects.PathDetectionObject) }; break");
         appendLine(sb, "    default: objects = getDetectionObjects()");
         appendLine(sb, "}");

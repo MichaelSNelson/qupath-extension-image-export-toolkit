@@ -21,6 +21,7 @@ public class ObjectCropConfig {
     public enum ObjectType {
         DETECTIONS,
         CELLS,
+        ANNOTATIONS,
         ALL
     }
 

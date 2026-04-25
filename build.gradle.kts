@@ -1,6 +1,7 @@
 plugins {
     id("com.gradleup.shadow") version "8.3.5"
     id("qupath-conventions")
+    id("com.github.spotbugs") version "6.5.0"
 }
 
 qupathExtension {
@@ -37,4 +38,17 @@ tasks.withType<JavaCompile> {
 
 tasks.test {
     useJUnitPlatform()
+}
+
+// ---------------------------------------------------------------------------
+// SpotBugs -- static bug detection (gates the build)
+// ---------------------------------------------------------------------------
+spotbugs {
+    effort.set(com.github.spotbugs.snom.Effort.MAX)
+    reportLevel.set(com.github.spotbugs.snom.Confidence.HIGH)
+    excludeFilter.set(file("config/spotbugs/exclude.xml"))
+}
+
+tasks.withType<com.github.spotbugs.snom.SpotBugsTask>().configureEach {
+    reports.create("html") { required.set(true) }
 }

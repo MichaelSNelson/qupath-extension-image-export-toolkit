@@ -1,12 +1,19 @@
 package qupath.ext.quiet.ui;
 
+import java.awt.image.BufferedImage;
 import java.io.File;
 import java.util.ArrayList;
+import java.util.Collection;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.ResourceBundle;
+import java.util.Set;
+import java.util.concurrent.CompletableFuture;
 
+import javafx.application.Platform;
 import javafx.collections.FXCollections;
 import javafx.geometry.Insets;
+import javafx.scene.control.Button;
 import javafx.scene.control.ComboBox;
 import javafx.scene.control.Label;
 import javafx.scene.control.ListView;
@@ -22,16 +29,26 @@ import javafx.scene.text.Font;
 import javafx.scene.text.FontWeight;
 import javafx.util.StringConverter;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 import qupath.ext.quiet.export.ObjectCropConfig;
 import qupath.ext.quiet.export.OutputFormat;
 import qupath.ext.quiet.preferences.QuietPreferences;
 import qupath.lib.gui.QuPathGUI;
+import qupath.lib.images.ImageData;
+import qupath.lib.objects.PathDetectionObject;
+import qupath.lib.objects.PathObject;
 import qupath.lib.objects.classes.PathClass;
+import qupath.lib.projects.Project;
+import qupath.lib.projects.ProjectImageEntry;
 
 /**
  * Step 2 config pane for Object Crops export category.
  */
 public class ObjectCropConfigPane extends VBox {
+
+    private static final Logger logger = LoggerFactory.getLogger(ObjectCropConfigPane.class);
 
     private static final ResourceBundle resources =
             ResourceBundle.getBundle("qupath.ext.quiet.ui.strings");
@@ -45,6 +62,7 @@ public class ObjectCropConfigPane extends VBox {
     private ComboBox<ObjectCropConfig.LabelFormat> labelFormatCombo;
     private ComboBox<OutputFormat> formatCombo;
     private ListView<TiledConfigPane.ClassificationItem> classificationList;
+    private Button searchProjectBtn;
 
     // Labels promoted for simple mode toggling
     private Label paddingLabel;
@@ -83,6 +101,7 @@ public class ObjectCropConfigPane extends VBox {
                 return switch (type) {
                     case DETECTIONS -> resources.getString("objectCrops.objectType.detections");
                     case CELLS -> resources.getString("objectCrops.objectType.cells");
+                    case ANNOTATIONS -> resources.getString("objectCrops.objectType.annotations");
                     case ALL -> resources.getString("objectCrops.objectType.all");
                 };
             }
@@ -178,11 +197,13 @@ public class ObjectCropConfigPane extends VBox {
         classificationList.setCellFactory(lv ->
                 new CheckBoxListCell<>(TiledConfigPane.ClassificationItem::selectedProperty));
 
-        var selectAllBtn = new javafx.scene.control.Button(resources.getString("button.selectAll"));
+        var selectAllBtn = new Button(resources.getString("button.selectAll"));
         selectAllBtn.setOnAction(e -> classificationList.getItems().forEach(it -> it.setSelected(true)));
-        var selectNoneBtn = new javafx.scene.control.Button(resources.getString("button.deselectAll"));
+        var selectNoneBtn = new Button(resources.getString("button.deselectAll"));
         selectNoneBtn.setOnAction(e -> classificationList.getItems().forEach(it -> it.setSelected(false)));
-        var selectionBtns = new HBox(5, selectAllBtn, selectNoneBtn);
+        searchProjectBtn = new Button(resources.getString("objectCrops.button.searchProject"));
+        searchProjectBtn.setOnAction(e -> searchProjectForClasses());
+        var selectionBtns = new HBox(5, selectAllBtn, selectNoneBtn, searchProjectBtn);
 
         var classBox = new VBox(5, classLabel, classificationList, selectionBtns);
         VBox.setVgrow(classificationList, Priority.ALWAYS);
@@ -193,6 +214,8 @@ public class ObjectCropConfigPane extends VBox {
         getChildren().addAll(header, cropSettingsSection, classificationsSection);
         VBox.setVgrow(classificationsSection, Priority.ALWAYS);
         wireTooltips();
+
+        objectTypeCombo.valueProperty().addListener((obs, oldVal, newVal) -> populateClassifications());
     }
 
     private void wireTooltips() {
@@ -203,6 +226,7 @@ public class ObjectCropConfigPane extends VBox {
         labelFormatCombo.setTooltip(createTooltip("tooltip.objectCrops.labelFormat"));
         formatCombo.setTooltip(createTooltip("tooltip.objectCrops.format"));
         classificationList.setTooltip(createTooltip("tooltip.objectCrops.classifications"));
+        searchProjectBtn.setTooltip(createTooltip("tooltip.objectCrops.searchProject"));
     }
 
     private static Tooltip createTooltip(String key) {
@@ -214,15 +238,104 @@ public class ObjectCropConfigPane extends VBox {
     }
 
     private void populateClassifications() {
+        populateClassifications(collectClassNamesForObjectType(objectTypeCombo.getValue()));
+    }
+
+    private void populateClassifications(Set<String> classNames) {
+        Set<String> previouslySelected = new LinkedHashSet<>();
+        for (var item : classificationList.getItems()) {
+            if (item.isSelected()) previouslySelected.add(item.getClassName());
+        }
+        boolean hadPriorItems = !classificationList.getItems().isEmpty();
         classificationList.getItems().clear();
-        var project = qupath.getProject();
+
+        for (String name : classNames) {
+            boolean selected = hadPriorItems ? previouslySelected.contains(name) : true;
+            classificationList.getItems().add(
+                    new TiledConfigPane.ClassificationItem(name, selected));
+        }
+    }
+
+    /**
+     * Scan every image in the project (off the FX thread), collecting the set
+     * of classifications present on objects of the currently selected type.
+     * Slow for large projects since each image must be opened.
+     */
+    private void searchProjectForClasses() {
+        Project<BufferedImage> project = qupath.getProject();
         if (project == null) return;
 
-        var classes = project.getPathClasses();
-        for (PathClass pc : classes) {
+        ObjectCropConfig.ObjectType type = objectTypeCombo.getValue();
+        if (type == null) return;
+
+        String originalLabel = searchProjectBtn.getText();
+        searchProjectBtn.setDisable(true);
+        searchProjectBtn.setText(originalLabel + "...");
+
+        CompletableFuture.supplyAsync(() -> scanProjectForClassNames(project, type))
+                .whenComplete((names, err) -> Platform.runLater(() -> {
+                    searchProjectBtn.setDisable(false);
+                    searchProjectBtn.setText(originalLabel);
+                    if (err != null) {
+                        logger.error("Error scanning project for classes", err);
+                        return;
+                    }
+                    // Union with current-image classes so nothing from the open image is dropped
+                    Set<String> union = new LinkedHashSet<>(collectClassNamesForObjectType(type));
+                    union.addAll(names);
+                    populateClassifications(union);
+                }));
+    }
+
+    private static Set<String> scanProjectForClassNames(
+            Project<BufferedImage> project, ObjectCropConfig.ObjectType type) {
+        Set<String> names = new LinkedHashSet<>();
+        for (ProjectImageEntry<BufferedImage> entry : project.getImageList()) {
+            try {
+                ImageData<BufferedImage> imageData = entry.readImageData();
+                collectClassNamesFromHierarchy(imageData.getHierarchy(), type, names);
+            } catch (Exception e) {
+                logger.warn("Skipping entry '{}' during class scan: {}",
+                        entry.getImageName(), e.getMessage());
+            }
+        }
+        return names;
+    }
+
+    /**
+     * Collect the set of classification names present on objects of the given type
+     * in the current image's hierarchy. Returns an empty set if no image is open.
+     */
+    private Set<String> collectClassNamesForObjectType(ObjectCropConfig.ObjectType type) {
+        Set<String> names = new LinkedHashSet<>();
+        var viewer = qupath.getViewer();
+        if (viewer == null || viewer.getImageData() == null || type == null) return names;
+        collectClassNamesFromHierarchy(viewer.getImageData().getHierarchy(), type, names);
+        return names;
+    }
+
+    private static void collectClassNamesFromHierarchy(
+            qupath.lib.objects.hierarchy.PathObjectHierarchy hierarchy,
+            ObjectCropConfig.ObjectType type,
+            Set<String> out) {
+        if (hierarchy == null || type == null) return;
+        Collection<? extends PathObject> objects = switch (type) {
+            case DETECTIONS -> hierarchy.getDetectionObjects();
+            case CELLS -> hierarchy.getCellObjects();
+            case ANNOTATIONS -> hierarchy.getAnnotationObjects();
+            case ALL -> {
+                var combined = new ArrayList<PathObject>();
+                combined.addAll(hierarchy.getDetectionObjects());
+                hierarchy.getCellObjects().stream()
+                        .filter(o -> !(o instanceof PathDetectionObject))
+                        .forEach(combined::add);
+                yield combined;
+            }
+        };
+        for (PathObject obj : objects) {
+            PathClass pc = obj.getPathClass();
             if (pc == null || pc == PathClass.NULL_CLASS) continue;
-            classificationList.getItems().add(
-                    new TiledConfigPane.ClassificationItem(pc.toString(), true));
+            out.add(pc.toString());
         }
     }
 
