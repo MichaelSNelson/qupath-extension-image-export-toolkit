@@ -41,6 +41,14 @@ public class RawConfigPane extends VBox {
     private ComboBox<Double> downsampleCombo;
     private ComboBox<OutputFormat> formatCombo;
 
+    // Labels promoted for tooltip wiring
+    private Label regionTypeLabel;
+    private Label downsampleLabel;
+    private Label formatLabel;
+    private Label pyramidLevelsLabel;
+    private Label compressionLabel;
+    private Label tileSizeLabel;
+
     // Padding
     private Label paddingLabel;
     private Spinner<Integer> paddingSpinner;
@@ -80,7 +88,8 @@ public class RawConfigPane extends VBox {
         int row = 0;
 
         // Region type
-        grid.add(new Label(resources.getString("raw.label.regionType")), 0, row);
+        Label regionTypeLabel = new Label(resources.getString("raw.label.regionType"));
+        grid.add(regionTypeLabel, 0, row);
         regionTypeCombo = new ComboBox<>(FXCollections.observableArrayList(
                 RawExportConfig.RegionType.values()));
         regionTypeCombo.setValue(RawExportConfig.RegionType.WHOLE_IMAGE);
@@ -103,7 +112,8 @@ public class RawConfigPane extends VBox {
         row++;
 
         // Downsample
-        grid.add(new Label(resources.getString("raw.label.downsample")), 0, row);
+        Label downsampleLabel = new Label(resources.getString("raw.label.downsample"));
+        grid.add(downsampleLabel, 0, row);
         downsampleCombo = new ComboBox<>(FXCollections.observableArrayList(
                 1.0, 2.0, 4.0, 8.0, 16.0, 32.0));
         downsampleCombo.setEditable(true);
@@ -125,7 +135,8 @@ public class RawConfigPane extends VBox {
         row++;
 
         // Format
-        grid.add(new Label(resources.getString("raw.label.format")), 0, row);
+        Label formatLabel = new Label(resources.getString("raw.label.format"));
+        grid.add(formatLabel, 0, row);
         formatCombo = new ComboBox<>(FXCollections.observableArrayList(
                 java.util.Arrays.stream(OutputFormat.values())
                         .filter(f -> f != OutputFormat.SVG)
@@ -152,21 +163,24 @@ public class RawConfigPane extends VBox {
 
         int pRow = 0;
 
-        pyramidGrid.add(new Label(resources.getString("raw.label.pyramidLevels")), 0, pRow);
+        Label pyramidLevelsLabel = new Label(resources.getString("raw.label.pyramidLevels"));
+        pyramidGrid.add(pyramidLevelsLabel, 0, pRow);
         pyramidLevelsSpinner = new Spinner<>(new SpinnerValueFactory.IntegerSpinnerValueFactory(1, 10, 4));
         pyramidLevelsSpinner.setEditable(true);
         pyramidLevelsSpinner.setPrefWidth(100);
         pyramidGrid.add(pyramidLevelsSpinner, 1, pRow);
         pRow++;
 
-        pyramidGrid.add(new Label(resources.getString("raw.label.compression")), 0, pRow);
+        Label compressionLabel = new Label(resources.getString("raw.label.compression"));
+        pyramidGrid.add(compressionLabel, 0, pRow);
         compressionCombo = new ComboBox<>(FXCollections.observableArrayList(
                 "DEFAULT", "LZW", "JPEG", "J2K", "ZLIB", "UNCOMPRESSED"));
         compressionCombo.setValue("DEFAULT");
         pyramidGrid.add(compressionCombo, 1, pRow);
         pRow++;
 
-        pyramidGrid.add(new Label(resources.getString("raw.label.tileSize")), 0, pRow);
+        Label tileSizeLabel = new Label(resources.getString("raw.label.tileSize"));
+        pyramidGrid.add(tileSizeLabel, 0, pRow);
         tileSizeSpinner = new Spinner<>(new SpinnerValueFactory.IntegerSpinnerValueFactory(64, 2048, 512, 64));
         tileSizeSpinner.setEditable(true);
         tileSizeSpinner.setPrefWidth(100);
@@ -213,12 +227,19 @@ public class RawConfigPane extends VBox {
 
     private void wireTooltips() {
         regionTypeCombo.setTooltip(createTooltip("tooltip.raw.regionType"));
+        regionTypeLabel.setTooltip(createTooltip("tooltip.raw.regionType"));
         downsampleCombo.setTooltip(createTooltip("tooltip.raw.downsample"));
+        downsampleLabel.setTooltip(createTooltip("tooltip.raw.downsample"));
         formatCombo.setTooltip(createTooltip("tooltip.raw.format"));
+        formatLabel.setTooltip(createTooltip("tooltip.raw.format"));
         paddingSpinner.setTooltip(createTooltip("tooltip.raw.padding"));
+        paddingLabel.setTooltip(createTooltip("tooltip.raw.padding"));
         pyramidLevelsSpinner.setTooltip(createTooltip("tooltip.raw.pyramidLevels"));
+        pyramidLevelsLabel.setTooltip(createTooltip("tooltip.raw.pyramidLevels"));
         compressionCombo.setTooltip(createTooltip("tooltip.raw.compression"));
+        compressionLabel.setTooltip(createTooltip("tooltip.raw.compression"));
         tileSizeSpinner.setTooltip(createTooltip("tooltip.raw.tileSize"));
+        tileSizeLabel.setTooltip(createTooltip("tooltip.raw.tileSize"));
         channelListView.setTooltip(createTooltip("tooltip.raw.channels"));
     }
 

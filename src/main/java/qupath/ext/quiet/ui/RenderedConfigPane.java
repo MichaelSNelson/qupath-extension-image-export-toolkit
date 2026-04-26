@@ -166,6 +166,13 @@ public class RenderedConfigPane extends VBox {
     // Format info label
     private Label formatInfoLabel;
 
+    // Labels promoted for tooltip wiring (were inline new Label(...))
+    private Label modeLabel;
+    private Label regionTypeLabel;
+    private Label displaySettingsLabel;
+    private Label opacityLabel;
+    private Label formatLabel;
+
     // Controls needing visibility toggling
     private Label classifierLabel;
     private HBox classifierBox;
@@ -288,7 +295,8 @@ public class RenderedConfigPane extends VBox {
         int row = 0;
 
         // Render mode selection
-        grid.add(new Label(resources.getString("rendered.label.mode")), 0, row);
+        modeLabel = new Label(resources.getString("rendered.label.mode"));
+        grid.add(modeLabel, 0, row);
         modeCombo = new ComboBox<>(FXCollections.observableArrayList(
                 RenderedExportConfig.RenderMode.values()));
         modeCombo.setValue(RenderedExportConfig.RenderMode.CLASSIFIER_OVERLAY);
@@ -311,7 +319,8 @@ public class RenderedConfigPane extends VBox {
         row++;
 
         // Region type selection
-        grid.add(new Label(resources.getString("rendered.label.regionType")), 0, row);
+        regionTypeLabel = new Label(resources.getString("rendered.label.regionType"));
+        grid.add(regionTypeLabel, 0, row);
         regionTypeCombo = new ComboBox<>(FXCollections.observableArrayList(
                 RenderedExportConfig.RegionType.values()));
         regionTypeCombo.setValue(RenderedExportConfig.RegionType.WHOLE_IMAGE);
@@ -360,7 +369,8 @@ public class RenderedConfigPane extends VBox {
         row++;
 
         // Display settings mode
-        grid.add(new Label(resources.getString("rendered.label.displaySettings")), 0, row);
+        displaySettingsLabel = new Label(resources.getString("rendered.label.displaySettings"));
+        grid.add(displaySettingsLabel, 0, row);
         displaySettingsCombo = new ComboBox<>(FXCollections.observableArrayList(
                 DisplaySettingsMode.values()));
         displaySettingsCombo.setValue(DisplaySettingsMode.PER_IMAGE_SAVED);
@@ -437,7 +447,8 @@ public class RenderedConfigPane extends VBox {
         row++;
 
         // Opacity slider
-        grid.add(new Label(resources.getString("rendered.label.opacity")), 0, row);
+        opacityLabel = new Label(resources.getString("rendered.label.opacity"));
+        grid.add(opacityLabel, 0, row);
         opacitySlider = new Slider(0.0, 1.0, 0.5);
         opacitySlider.setShowTickMarks(true);
         opacitySlider.setShowTickLabels(true);
@@ -507,7 +518,8 @@ public class RenderedConfigPane extends VBox {
         row++;
 
         // Format combo
-        grid.add(new Label(resources.getString("rendered.label.format")), 0, row);
+        formatLabel = new Label(resources.getString("rendered.label.format"));
+        grid.add(formatLabel, 0, row);
         formatCombo = new ComboBox<>(FXCollections.observableArrayList(OutputFormat.values()));
         formatCombo.setValue(OutputFormat.PNG);
         grid.add(formatCombo, 1, row);
@@ -1400,50 +1412,89 @@ public class RenderedConfigPane extends VBox {
     }
 
     private void wireTooltips() {
-        regionTypeCombo.setTooltip(createTooltip("tooltip.rendered.regionType"));
-        classificationCombo.setTooltip(createTooltip("tooltip.rendered.classificationFilter"));
-        paddingSpinner.setTooltip(createTooltip("tooltip.rendered.padding"));
+        // Controls + their paired labels
         modeCombo.setTooltip(createTooltip("tooltip.rendered.mode"));
+        modeLabel.setTooltip(createTooltip("tooltip.rendered.mode"));
+        regionTypeCombo.setTooltip(createTooltip("tooltip.rendered.regionType"));
+        regionTypeLabel.setTooltip(createTooltip("tooltip.rendered.regionType"));
+        classificationCombo.setTooltip(createTooltip("tooltip.rendered.classificationFilter"));
+        classificationFilterLabel.setTooltip(createTooltip("tooltip.rendered.classificationFilter"));
+        paddingSpinner.setTooltip(createTooltip("tooltip.rendered.padding"));
+        paddingLabel.setTooltip(createTooltip("tooltip.rendered.padding"));
         displaySettingsCombo.setTooltip(createTooltip("tooltip.rendered.displaySettings"));
+        displaySettingsLabel.setTooltip(createTooltip("tooltip.rendered.displaySettings"));
         presetNameCombo.setTooltip(createTooltip("tooltip.rendered.preset"));
+        presetLabel.setTooltip(createTooltip("tooltip.rendered.preset"));
         classifierCombo.setTooltip(createTooltip("tooltip.rendered.classifier"));
+        classifierLabel.setTooltip(createTooltip("tooltip.rendered.classifier"));
         opacitySlider.setTooltip(createTooltip("tooltip.rendered.opacity"));
+        opacityLabel.setTooltip(createTooltip("tooltip.rendered.opacity"));
         downsampleCombo.setTooltip(createTooltip("tooltip.rendered.downsample"));
+        downsampleLabel.setTooltip(createTooltip("tooltip.rendered.downsample"));
         formatCombo.setTooltip(createTooltip("tooltip.rendered.format"));
+        formatLabel.setTooltip(createTooltip("tooltip.rendered.format"));
+        matchedPercentileSpinner.setTooltip(createTooltip("tooltip.rendered.matchedPercentile"));
+        matchedPercentileLabel.setTooltip(createTooltip("tooltip.rendered.matchedPercentile"));
+        resolutionModeCombo.setTooltip(createTooltip("tooltip.rendered.resolutionMode"));
+        resolutionModeLabel.setTooltip(createTooltip("tooltip.rendered.resolutionMode"));
+        dpiSpinner.setTooltip(createTooltip("tooltip.rendered.targetDpi"));
+        dpiLabel.setTooltip(createTooltip("tooltip.rendered.targetDpi"));
+        densityMapCombo.setTooltip(createTooltip("tooltip.rendered.densityMap"));
+        densityMapLabel.setTooltip(createTooltip("tooltip.rendered.densityMap"));
+        colormapCombo.setTooltip(createTooltip("tooltip.rendered.colormap"));
+        colormapLabel.setTooltip(createTooltip("tooltip.rendered.colormap"));
+
+        // Object overlay checkboxes (self-labeling)
         includeAnnotationsCheck.setTooltip(createTooltip("tooltip.rendered.includeAnnotations"));
         includeDetectionsCheck.setTooltip(createTooltip("tooltip.rendered.includeDetections"));
         fillAnnotationsCheck.setTooltip(createTooltip("tooltip.rendered.fillAnnotations"));
         showNamesCheck.setTooltip(createTooltip("tooltip.rendered.showNames"));
+
+        // Scale bar controls + labels
         showScaleBarCheck.setTooltip(createTooltip("tooltip.rendered.showScaleBar"));
         scaleBarPositionCombo.setTooltip(createTooltip("tooltip.rendered.scaleBarPosition"));
+        scaleBarPositionLabel.setTooltip(createTooltip("tooltip.rendered.scaleBarPosition"));
         scaleBarColorPicker.setTooltip(createTooltip("tooltip.rendered.scaleBarColor"));
+        scaleBarColorLabel.setTooltip(createTooltip("tooltip.rendered.scaleBarColor"));
         scaleBarFontSizeSpinner.setTooltip(createTooltip("tooltip.rendered.scaleBarFontSize"));
+        scaleBarFontSizeLabel.setTooltip(createTooltip("tooltip.rendered.scaleBarFontSize"));
         scaleBarBoldCheck.setTooltip(createTooltip("tooltip.rendered.scaleBarBold"));
         scaleBarBackgroundBoxCheck.setTooltip(createTooltip("tooltip.rendered.scaleBarBackgroundBox"));
         showChannelLegendCheck.setTooltip(createTooltip("tooltip.rendered.showChannelLegend"));
         previewButton.setTooltip(createTooltip("tooltip.rendered.previewImage"));
-        densityMapCombo.setTooltip(createTooltip("tooltip.rendered.densityMap"));
-        colormapCombo.setTooltip(createTooltip("tooltip.rendered.colormap"));
+
+        // Color scale bar controls + labels
         showColorScaleBarCheck.setTooltip(createTooltip("tooltip.rendered.showColorScaleBar"));
         colorScaleBarPositionCombo.setTooltip(createTooltip("tooltip.rendered.colorScaleBarPosition"));
+        colorScaleBarPositionLabel.setTooltip(createTooltip("tooltip.rendered.colorScaleBarPosition"));
         colorScaleBarFontSizeSpinner.setTooltip(createTooltip("tooltip.rendered.colorScaleBarFontSize"));
+        colorScaleBarFontSizeLabel.setTooltip(createTooltip("tooltip.rendered.colorScaleBarFontSize"));
         colorScaleBarBoldCheck.setTooltip(createTooltip("tooltip.rendered.colorScaleBarBold"));
+
+        // Panel label controls + labels
         showPanelLabelCheck.setTooltip(createTooltip("tooltip.rendered.showPanelLabel"));
         panelLabelTextField.setTooltip(createTooltip("tooltip.rendered.panelLabelText"));
+        panelLabelTextLabel.setTooltip(createTooltip("tooltip.rendered.panelLabelText"));
         panelLabelPositionCombo.setTooltip(createTooltip("tooltip.rendered.panelLabelPosition"));
+        panelLabelPositionLabel.setTooltip(createTooltip("tooltip.rendered.panelLabelPosition"));
         panelLabelFontSizeSpinner.setTooltip(createTooltip("tooltip.rendered.panelLabelFontSize"));
+        panelLabelFontSizeLabel.setTooltip(createTooltip("tooltip.rendered.panelLabelFontSize"));
         panelLabelBoldCheck.setTooltip(createTooltip("tooltip.rendered.panelLabelBold"));
+
+        // Split channel controls
         splitChannelsCheck.setTooltip(createTooltip("tooltip.rendered.splitChannels"));
         splitChannelsGrayscaleCheck.setTooltip(createTooltip("tooltip.rendered.splitGrayscale"));
         splitChannelColorBorderCheck.setTooltip(createTooltip("tooltip.rendered.splitChannelColorBorder"));
         channelColorLegendCheck.setTooltip(createTooltip("tooltip.rendered.channelColorLegend"));
-        matchedPercentileSpinner.setTooltip(createTooltip("tooltip.rendered.matchedPercentile"));
-        resolutionModeCombo.setTooltip(createTooltip("tooltip.rendered.resolutionMode"));
-        dpiSpinner.setTooltip(createTooltip("tooltip.rendered.targetDpi"));
+
+        // Info label controls + labels
         showInfoLabelCheck.setTooltip(createTooltip("tooltip.rendered.showInfoLabel"));
         infoLabelTemplateField.setTooltip(createTooltip("tooltip.rendered.infoLabelTemplate"));
+        infoLabelTemplateLabel.setTooltip(createTooltip("tooltip.rendered.infoLabelTemplate"));
         infoLabelPositionCombo.setTooltip(createTooltip("tooltip.rendered.infoLabelPosition"));
+        infoLabelPositionLabel.setTooltip(createTooltip("tooltip.rendered.infoLabelPosition"));
         infoLabelFontSizeSpinner.setTooltip(createTooltip("tooltip.rendered.infoLabelFontSize"));
+        infoLabelFontSizeLabel.setTooltip(createTooltip("tooltip.rendered.infoLabelFontSize"));
         infoLabelBoldCheck.setTooltip(createTooltip("tooltip.rendered.infoLabelBold"));
     }
 

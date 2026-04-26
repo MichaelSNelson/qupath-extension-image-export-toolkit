@@ -56,6 +56,13 @@ public class MaskConfigPane extends VBox {
     private CheckBox shuffleInstanceLabelsCheck;
     private CheckBox skipEmptyImagesCheck;
 
+    // Labels promoted for tooltip wiring
+    private Label maskTypeLabel;
+    private Label objectSourceLabel;
+    private Label downsampleLabel;
+    private Label formatLabel;
+    private Label backgroundLabelLabel;
+
     // Controls needing visibility toggling
     private Label classificationsLabel;
     private VBox classificationsBox;
@@ -85,7 +92,8 @@ public class MaskConfigPane extends VBox {
         int row = 0;
 
         // Mask type
-        settingsGrid.add(new Label(resources.getString("mask.label.type")), 0, row);
+        Label maskTypeLabel = new Label(resources.getString("mask.label.type"));
+        settingsGrid.add(maskTypeLabel, 0, row);
         maskTypeCombo = new ComboBox<>(FXCollections.observableArrayList(
                 MaskExportConfig.MaskType.values()));
         maskTypeCombo.setValue(MaskExportConfig.MaskType.BINARY);
@@ -110,7 +118,8 @@ public class MaskConfigPane extends VBox {
         row++;
 
         // Object source
-        settingsGrid.add(new Label(resources.getString("mask.label.objectSource")), 0, row);
+        Label objectSourceLabel = new Label(resources.getString("mask.label.objectSource"));
+        settingsGrid.add(objectSourceLabel, 0, row);
         objectSourceCombo = new ComboBox<>(FXCollections.observableArrayList(
                 MaskExportConfig.ObjectSource.values()));
         objectSourceCombo.setValue(MaskExportConfig.ObjectSource.ANNOTATIONS);
@@ -133,7 +142,8 @@ public class MaskConfigPane extends VBox {
         row++;
 
         // Downsample
-        settingsGrid.add(new Label(resources.getString("mask.label.downsample")), 0, row);
+        Label downsampleLabel = new Label(resources.getString("mask.label.downsample"));
+        settingsGrid.add(downsampleLabel, 0, row);
         downsampleCombo = new ComboBox<>(FXCollections.observableArrayList(
                 1.0, 2.0, 4.0, 8.0, 16.0, 32.0));
         downsampleCombo.setEditable(true);
@@ -155,7 +165,8 @@ public class MaskConfigPane extends VBox {
         row++;
 
         // Format
-        settingsGrid.add(new Label(resources.getString("mask.label.format")), 0, row);
+        Label formatLabel = new Label(resources.getString("mask.label.format"));
+        settingsGrid.add(formatLabel, 0, row);
         // Exclude SVG (not applicable) and JPEG (lossy compression destroys label values)
         formatCombo = new ComboBox<>(FXCollections.observableArrayList(
                 java.util.Arrays.stream(OutputFormat.values())
@@ -175,7 +186,8 @@ public class MaskConfigPane extends VBox {
         int lRow = 0;
 
         // Background label
-        labelGrid.add(new Label(resources.getString("mask.label.backgroundLabel")), 0, lRow);
+        Label backgroundLabelLabel = new Label(resources.getString("mask.label.backgroundLabel"));
+        labelGrid.add(backgroundLabelLabel, 0, lRow);
         backgroundLabelSpinner = new Spinner<>(new SpinnerValueFactory.IntegerSpinnerValueFactory(
                 -1, 255, 0));
         backgroundLabelSpinner.setEditable(true);
@@ -270,13 +282,19 @@ public class MaskConfigPane extends VBox {
 
     private void wireTooltips() {
         maskTypeCombo.setTooltip(createTooltip("tooltip.mask.type"));
+        maskTypeLabel.setTooltip(createTooltip("tooltip.mask.type"));
         objectSourceCombo.setTooltip(createTooltip("tooltip.mask.objectSource"));
+        objectSourceLabel.setTooltip(createTooltip("tooltip.mask.objectSource"));
         backgroundLabelSpinner.setTooltip(createTooltip("tooltip.mask.backgroundLabel"));
+        backgroundLabelLabel.setTooltip(createTooltip("tooltip.mask.backgroundLabel"));
         enableBoundaryCheck.setTooltip(createTooltip("tooltip.mask.enableBoundary"));
         boundaryLabelSpinner.setTooltip(createTooltip("tooltip.mask.boundaryLabel"));
         boundaryThicknessSpinner.setTooltip(createTooltip("tooltip.mask.boundaryThickness"));
+        boundaryThicknessLabel.setTooltip(createTooltip("tooltip.mask.boundaryThickness"));
         downsampleCombo.setTooltip(createTooltip("tooltip.mask.downsample"));
+        downsampleLabel.setTooltip(createTooltip("tooltip.mask.downsample"));
         formatCombo.setTooltip(createTooltip("tooltip.mask.format"));
+        formatLabel.setTooltip(createTooltip("tooltip.mask.format"));
         grayscaleLutCheck.setTooltip(createTooltip("tooltip.mask.grayscaleLut"));
         shuffleInstanceLabelsCheck.setTooltip(createTooltip("tooltip.mask.shuffleInstance"));
         skipEmptyImagesCheck.setTooltip(createTooltip("tooltip.mask.skipEmpty"));

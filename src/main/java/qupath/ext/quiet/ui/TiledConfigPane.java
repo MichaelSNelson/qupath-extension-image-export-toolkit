@@ -56,6 +56,13 @@ public class TiledConfigPane extends VBox {
     private ComboBox<MaskExportConfig.ObjectSource> labelObjectSourceCombo;
     private ListView<ClassificationItem> labelClassificationList;
 
+    // Labels promoted for tooltip wiring
+    private Label tileSizeLabel;
+    private Label overlapLabel;
+    private Label downsampleLabel;
+    private Label imageFormatLabel;
+    private Label labelFormatLabel;
+
     // Filter settings
     private Label parentFilterLabel;
     private ComboBox<TiledExportConfig.ParentObjectFilter> parentFilterCombo;
@@ -91,7 +98,8 @@ public class TiledConfigPane extends VBox {
         int row = 0;
 
         // Tile size
-        tileGrid.add(new Label(resources.getString("tiled.label.tileSize")), 0, row);
+        Label tileSizeLabel = new Label(resources.getString("tiled.label.tileSize"));
+        tileGrid.add(tileSizeLabel, 0, row);
         tileSizeSpinner = new Spinner<>(new SpinnerValueFactory.IntegerSpinnerValueFactory(
                 32, 4096, 512, 64));
         tileSizeSpinner.setEditable(true);
@@ -100,7 +108,8 @@ public class TiledConfigPane extends VBox {
         row++;
 
         // Overlap
-        tileGrid.add(new Label(resources.getString("tiled.label.overlap")), 0, row);
+        Label overlapLabel = new Label(resources.getString("tiled.label.overlap"));
+        tileGrid.add(overlapLabel, 0, row);
         overlapSpinner = new Spinner<>(new SpinnerValueFactory.IntegerSpinnerValueFactory(
                 0, 512, 0, 16));
         overlapSpinner.setEditable(true);
@@ -109,7 +118,8 @@ public class TiledConfigPane extends VBox {
         row++;
 
         // Downsample
-        tileGrid.add(new Label(resources.getString("tiled.label.downsample")), 0, row);
+        Label downsampleLabel = new Label(resources.getString("tiled.label.downsample"));
+        tileGrid.add(downsampleLabel, 0, row);
         downsampleCombo = new ComboBox<>(FXCollections.observableArrayList(
                 1.0, 2.0, 4.0, 8.0));
         downsampleCombo.setEditable(true);
@@ -131,7 +141,8 @@ public class TiledConfigPane extends VBox {
         row++;
 
         // Image format
-        tileGrid.add(new Label(resources.getString("tiled.label.imageFormat")), 0, row);
+        Label imageFormatLabel = new Label(resources.getString("tiled.label.imageFormat"));
+        tileGrid.add(imageFormatLabel, 0, row);
         imageFormatCombo = new ComboBox<>(FXCollections.observableArrayList(
                 OutputFormat.PNG, OutputFormat.TIFF, OutputFormat.JPEG));
         imageFormatCombo.setValue(OutputFormat.TIFF);
@@ -186,7 +197,8 @@ public class TiledConfigPane extends VBox {
         int lRow = 0;
 
         // Label format
-        labelGrid.add(new Label(resources.getString("tiled.label.labelFormat")), 0, lRow);
+        Label labelFormatLabel = new Label(resources.getString("tiled.label.labelFormat"));
+        labelGrid.add(labelFormatLabel, 0, lRow);
         labelFormatCombo = new ComboBox<>(FXCollections.observableArrayList(
                 OutputFormat.PNG, OutputFormat.TIFF));
         labelFormatCombo.setValue(OutputFormat.PNG);
@@ -288,16 +300,24 @@ public class TiledConfigPane extends VBox {
 
     private void wireTooltips() {
         tileSizeSpinner.setTooltip(createTooltip("tooltip.tiled.tileSize"));
+        tileSizeLabel.setTooltip(createTooltip("tooltip.tiled.tileSize"));
         overlapSpinner.setTooltip(createTooltip("tooltip.tiled.overlap"));
+        overlapLabel.setTooltip(createTooltip("tooltip.tiled.overlap"));
         downsampleCombo.setTooltip(createTooltip("tooltip.tiled.downsample"));
+        downsampleLabel.setTooltip(createTooltip("tooltip.tiled.downsample"));
         imageFormatCombo.setTooltip(createTooltip("tooltip.tiled.imageFormat"));
+        imageFormatLabel.setTooltip(createTooltip("tooltip.tiled.imageFormat"));
         parentFilterCombo.setTooltip(createTooltip("tooltip.tiled.parentFilter"));
+        parentFilterLabel.setTooltip(createTooltip("tooltip.tiled.parentFilter"));
         annotatedOnlyCheck.setTooltip(createTooltip("tooltip.tiled.annotatedOnly"));
         exportJsonCheck.setTooltip(createTooltip("tooltip.tiled.exportJson"));
         enableLabelsCheck.setTooltip(createTooltip("tooltip.tiled.enableLabels"));
         labelFormatCombo.setTooltip(createTooltip("tooltip.tiled.labelFormat"));
+        labelFormatLabel.setTooltip(createTooltip("tooltip.tiled.labelFormat"));
         labelMaskTypeCombo.setTooltip(createTooltip("tooltip.tiled.labelMaskType"));
+        labelMaskTypeLabel.setTooltip(createTooltip("tooltip.tiled.labelMaskType"));
         labelObjectSourceCombo.setTooltip(createTooltip("tooltip.tiled.labelObjectSource"));
+        labelObjectSourceLabel.setTooltip(createTooltip("tooltip.tiled.labelObjectSource"));
         labelClassificationList.setTooltip(createTooltip("tooltip.tiled.labelClassifications"));
     }
 

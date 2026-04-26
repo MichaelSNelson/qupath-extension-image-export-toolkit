@@ -64,10 +64,13 @@ public class ObjectCropConfigPane extends VBox {
     private ListView<TiledConfigPane.ClassificationItem> classificationList;
     private Button searchProjectBtn;
 
-    // Labels promoted for simple mode toggling
+    // Labels promoted for tooltip wiring and simple mode toggling
+    private Label objectTypeLabel;
+    private Label cropSizeLabel;
     private Label paddingLabel;
     private Label downsampleLabel;
     private Label labelFormatLabel;
+    private Label formatLabel;
 
     public ObjectCropConfigPane(QuPathGUI qupath) {
         this.qupath = qupath;
@@ -90,7 +93,8 @@ public class ObjectCropConfigPane extends VBox {
         int row = 0;
 
         // Object type
-        grid.add(new Label(resources.getString("objectCrops.label.objectType")), 0, row);
+        Label objectTypeLabel = new Label(resources.getString("objectCrops.label.objectType"));
+        grid.add(objectTypeLabel, 0, row);
         objectTypeCombo = new ComboBox<>(FXCollections.observableArrayList(
                 ObjectCropConfig.ObjectType.values()));
         objectTypeCombo.setValue(ObjectCropConfig.ObjectType.DETECTIONS);
@@ -114,7 +118,8 @@ public class ObjectCropConfigPane extends VBox {
         row++;
 
         // Crop size
-        grid.add(new Label(resources.getString("objectCrops.label.cropSize")), 0, row);
+        Label cropSizeLabel = new Label(resources.getString("objectCrops.label.cropSize"));
+        grid.add(cropSizeLabel, 0, row);
         cropSizeSpinner = new Spinner<>(new SpinnerValueFactory.IntegerSpinnerValueFactory(
                 16, 512, 64, 16));
         cropSizeSpinner.setEditable(true);
@@ -179,7 +184,8 @@ public class ObjectCropConfigPane extends VBox {
         row++;
 
         // Output format
-        grid.add(new Label(resources.getString("objectCrops.label.format")), 0, row);
+        Label formatLabel = new Label(resources.getString("objectCrops.label.format"));
+        grid.add(formatLabel, 0, row);
         formatCombo = new ComboBox<>(FXCollections.observableArrayList(
                 OutputFormat.PNG, OutputFormat.TIFF, OutputFormat.JPEG));
         formatCombo.setValue(OutputFormat.PNG);
@@ -220,11 +226,17 @@ public class ObjectCropConfigPane extends VBox {
 
     private void wireTooltips() {
         objectTypeCombo.setTooltip(createTooltip("tooltip.objectCrops.objectType"));
+        objectTypeLabel.setTooltip(createTooltip("tooltip.objectCrops.objectType"));
         cropSizeSpinner.setTooltip(createTooltip("tooltip.objectCrops.cropSize"));
+        cropSizeLabel.setTooltip(createTooltip("tooltip.objectCrops.cropSize"));
         paddingSpinner.setTooltip(createTooltip("tooltip.objectCrops.cropPadding"));
+        paddingLabel.setTooltip(createTooltip("tooltip.objectCrops.cropPadding"));
         downsampleCombo.setTooltip(createTooltip("tooltip.objectCrops.cropDownsample"));
+        downsampleLabel.setTooltip(createTooltip("tooltip.objectCrops.cropDownsample"));
         labelFormatCombo.setTooltip(createTooltip("tooltip.objectCrops.labelFormat"));
+        labelFormatLabel.setTooltip(createTooltip("tooltip.objectCrops.labelFormat"));
         formatCombo.setTooltip(createTooltip("tooltip.objectCrops.format"));
+        formatLabel.setTooltip(createTooltip("tooltip.objectCrops.format"));
         classificationList.setTooltip(createTooltip("tooltip.objectCrops.classifications"));
         searchProjectBtn.setTooltip(createTooltip("tooltip.objectCrops.searchProject"));
     }
