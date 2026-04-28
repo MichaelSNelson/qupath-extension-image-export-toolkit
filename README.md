@@ -3,9 +3,9 @@
 [![Release](https://img.shields.io/github/v/release/uw-loci/qupath-extension-image-export-toolkit?include_prereleases)](https://github.com/uw-loci/qupath-extension-image-export-toolkit/releases)
 [![License](https://img.shields.io/github/license/uw-loci/qupath-extension-image-export-toolkit)](LICENSE)
 
-A [QuPath](https://qupath.github.io/) extension for batch exporting images in multiple formats for use in publication, for review, and for machine learning training and analysis.
+A [QuPath](https://qupath.github.io/) extension that turns annotated whole-slide images into **publication-ready figures**, **review images for collaborators**, and **training datasets for machine learning** -- in batch, without writing an export script.
 
-QuIET provides a guided wizard UI for exporting rendered overlays, label/instance masks, raw pixel data, tiled image+label pairs, and per-object classification crops -- all with self-contained Groovy script generation so every export is reproducible and editable.
+A guided wizard walks you from "I have an annotated project" to finished files: composite figures with scale bars and panel labels, segmentation masks for training or QC, raw pixel data at any resolution, image+label tile pairs for deep-learning frameworks, and per-object crops for cell-type classifiers. Every export also writes a self-contained Groovy script, so the same settings can be re-run, version-controlled, or shared with a collaborator who doesn't have QuIET installed.
 
 ![QuIET interface](documentation/images/QUIET-interface.png)
 
@@ -114,7 +114,7 @@ produce clearer, more reproducible microscopy figures.
 <details>
 <summary><h3>Rendered Image</h3></summary>
 
-Export images with visual overlays composited onto the base image.
+Produce **publication-ready figures** -- the image as it looks in QuPath, with your annotations, classifier results, or density map composited on top. Add a scale bar, panel letter (A, B, C...), per-image info stamp, and split multi-channel fluorescence into individual + merged panels in one batch. This is the export you want for papers, posters, slide decks, and figures shared for review.
 
 ![Rendered export configuration with QUAREP guidelines panel](documentation/images/RenderedImageExport.png)
 
@@ -266,7 +266,7 @@ For multi-channel fluorescence images, the rendered export can emit one panel pe
 <details>
 <summary><h3>Label / Mask</h3></summary>
 
-Export segmentation masks from QuPath's object hierarchy using `LabeledImageServer`.
+Generate **segmentation masks paired with your images** -- the ground-truth label files needed to train or evaluate segmentation models, or to review which objects QuPath has detected. Choose binary foreground/background, integer class labels, per-object instance IDs, class-colored overlays, or one binary channel per class. Masks are rendered exactly from your annotation geometry (no JPEG, no resampling artifacts), so label values stay precise at any resolution. (Built on QuPath's `LabeledImageServer`.)
 
 | Mask Type | Description |
 |-----------|-------------|
@@ -292,7 +292,7 @@ Additional mask options:
 <details>
 <summary><h3>Raw Pixel Data</h3></summary>
 
-Export unprocessed pixel data at configurable resolution.
+Export the **underlying image pixels** -- no overlays, no brightness/contrast adjustment, no scale bar burned in -- at full resolution or downsampled. Use this when a downstream tool (an ML pipeline, a different analysis package, an archive) needs the original pixel values, optionally cropped to annotations or restricted to specific channels. Multi-resolution OME-TIFF Pyramid output is supported for very large regions.
 
 | Option | Description |
 |--------|-------------|
@@ -310,7 +310,7 @@ Export unprocessed pixel data at configurable resolution.
 <details>
 <summary><h3>Tiled Export (ML Training)</h3></summary>
 
-Export fixed-size image + label tile pairs for deep learning frameworks (StarDist, CellPose, HoVer-Net, etc.) using QuPath's `TileExporter` API.
+Generate **fixed-size image + label tile pairs** ready to feed into deep-learning training pipelines like StarDist, CellPose, or HoVer-Net. Pick a tile size, overlap, and resolution, optionally restrict tiles to annotated regions, and QuIET emits matched image and mask tiles (plus optional per-tile GeoJSON) -- replacing the custom tiling script you'd otherwise write against QuPath's `TileExporter` API.
 
 | Option | Description |
 |--------|-------------|
@@ -329,7 +329,7 @@ Export fixed-size image + label tile pairs for deep learning frameworks (StarDis
 <details>
 <summary><h3>Object Crops (Classification Training)</h3></summary>
 
-Export individual object crops organized by classification for training image classifiers (e.g., cell type classifiers, detection quality filters).
+Export **one small image per detected object**, organized by class, for training a per-object classifier (cell-type calls, detection-quality filters, mitosis classifiers, etc.). Pick a fixed crop size around each cell or detection centroid, choose how classes should be encoded (subdirectory per class, or filename prefix), and QuIET produces a directory tree that drops directly into PyTorch / TensorFlow `ImageFolder`-style loaders.
 
 | Option | Description |
 |--------|-------------|
@@ -561,6 +561,10 @@ See `documentation/POTENTIAL_FEATURES.md` for detailed implementation plans.
 </details>
 
 ---
+
+## Support
+
+For general support and feature requests, please post on the [image.sc forum](https://forum.image.sc/) with the `#qupath` tag and mention `@Mike_Nelson` to flag the topic for my attention.
 
 ## License
 
